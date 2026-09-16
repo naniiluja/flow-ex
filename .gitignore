@@ -1,0 +1,21 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.local
+
+# per-run project data and logs (never public)
+projects/
+logs/
+
+# dedicated Chrome profile used for Flow automation (CDP)
+chrome-profile/
+
+# local Claude Code session/harness state, not part of the shared project spec
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# editor/OS
+.DS_Store
+.vscode/
+*.log

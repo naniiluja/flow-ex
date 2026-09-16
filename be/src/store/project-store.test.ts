@@ -1,0 +1,96 @@
+import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import type { ScriptInput } from "@flow-ex/shared-schemas";
+
+import { AppError } from "../domain/app-error.ts";
+import { createProjectStore, type ProjectStore } from "./project-store.ts";
+
+const validInput: ScriptInput = {
+  title: "Cau chuyen mua he",
+  voice: "hn_female_ngochuyen_full_48k-fhg",
+  aspectRatio: "16:9",
+  scenes: [{ narration: "Xin chao", imagePrompt: "a sunny beach" }],
+};
+
+describe("createProjectStore", () => {
+  let root: string;
+  let store: ProjectStore;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "flow-ex-project-store-"));
+    store = createProjectStore(root);
+  });
+
+  afterEach(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("creates a project.json file that reads back identically", async () => {
+    const created = await store.create(validInput);
+    const onDisk = await fs.readFile(path.join(root, created.id, "project.json"), "utf8");
+    expect(JSON.parse(onDisk)).toEqual(created);
+
+    const read = await store.read(created.id);
+    expect(read).toEqual(created);
+  });
+
+  it("stamps a fresh project with schemaVersion 1 and a unique id", async () => {
+    const a = await store.create(validInput);
+    const b = await store.create(validInput);
+    expect(a.schemaVersion).toBe(1);
+    expect(a.id).not.toBe(b.id);
+  });
+
+  it("throws AppError(PROJECT_NOT_FOUND, fatal) for an unknown id", async () => {
+    await expect(store.read(randomUUID())).rejects.toSatisfy((error: unknown) => {
+      return (
+        error instanceof AppError &&
+        error.code === "PROJECT_NOT_FOUND" &&
+        error.errorKind === "fatal"
+      );
+    });
+  });
+
+  it("throws AppError(PROJECT_CORRUPT, fatal) when project.json fails schema validation", async () => {
+    const created = await store.create(validInput);
+    await fs.writeFile(path.join(root, created.id, "project.json"), JSON.stringify({ bad: true }));
+
+    await expect(store.read(created.id)).rejects.toSatisfy((error: unknown) => {
+      return (
+        error instanceof AppError && error.code === "PROJECT_CORRUPT" && error.errorKind === "fatal"
+      );
+    });
+  });
+
+  it("throws AppError(PROJECT_CORRUPT, fatal), not a raw SyntaxError, for truncated JSON", async () => {
+    const created = await store.create(validInput);
+    await fs.writeFile(path.join(root, created.id, "project.json"), '{"title": "trunc');
+
+    await expect(store.read(created.id)).rejects.toSatisfy((error: unknown) => {
+      return (
+        error instanceof AppError && error.code === "PROJECT_CORRUPT" && error.errorKind === "fatal"
+      );
+    });
+  });
+
+  it("throws AppError(PROJECT_READ_FAILED, transient), not PROJECT_NOT_FOUND, for a non-ENOENT read failure", async () => {
+    const created = await store.create(validInput);
+    // Replace the file with a directory of the same name: readFile then fails with EISDIR,
+    // a real system error that must not be reported to the client as a missing resource.
+    await fs.rm(path.join(root, created.id, "project.json"));
+    await fs.mkdir(path.join(root, created.id, "project.json"));
+
+    await expect(store.read(created.id)).rejects.toSatisfy((error: unknown) => {
+      return (
+        error instanceof AppError &&
+        error.code === "PROJECT_READ_FAILED" &&
+        error.errorKind === "transient"
+      );
+    });
+  });
+});

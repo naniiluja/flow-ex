@@ -1,0 +1,11 @@
+# CCF spec files use a non-standard `@path` directive syntax that Prettier's markdown
+# formatter does not understand (it merges an `@import` line into the preceding blockquote,
+# breaking the directive). Never run Prettier over CLAUDE.md or .claude/**.
+CLAUDE.md
+**/CLAUDE.md
+.claude/
+**/.claude/
+
+dist/
+coverage/
+pnpm-lock.yaml
