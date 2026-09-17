@@ -4,15 +4,26 @@ import {
   type ZodTypeProvider,
 } from "@fastify/type-provider-zod";
 import Fastify, { type FastifyError } from "fastify";
-import type { Logger } from "pino";
+import pino, { type Logger } from "pino";
 
 import { AppError } from "./domain/app-error.ts";
+import { createPipelineEventBus, type PipelineEventBus } from "./pipeline/pipeline-events.ts";
+import assetsRoutes from "./routes/assets.ts";
+import eventsRoutes from "./routes/events.ts";
+import projectAssetsRoutes from "./routes/project-assets.ts";
 import projectsRoutes from "./routes/projects.ts";
+import renderRoutes, { type VbeeCredentials } from "./routes/render.ts";
 import type { ProjectStore } from "./store/project-store.ts";
 
 export interface BuildAppOptions {
   store: ProjectStore;
   loggerInstance?: Logger;
+  /** Injectable so a test can observe/emit pipeline events directly; defaults to a fresh
+   * per-app bus (../.claude/rules/architecture.md). */
+  eventBus?: PipelineEventBus;
+  /** Present -> real `VbeeTtsProvider`; absent -> `FakeTtsProvider` (task 003/004, see
+   * `render.ts`). `server.ts` derives this from `env.VBEE_APP_ID`/`VBEE_TOKEN`. */
+  vbeeCredentials?: VbeeCredentials;
 }
 
 /** Explicit code -> HTTP status map (see ../.claude/rules/error-handling.md). Anything not
@@ -20,6 +31,7 @@ export interface BuildAppOptions {
  * AppError code never needs an edit here unless it needs a NON-default status. */
 const STATUS_BY_APP_ERROR_CODE: Record<string, number> = {
   PROJECT_NOT_FOUND: 404,
+  ASSET_PATH_INVALID: 400,
 };
 
 function statusForAppError(error: AppError): number {
@@ -67,7 +79,19 @@ export function buildApp(options: BuildAppOptions) {
     reply.code(500).send({ error: { code: "INTERNAL_ERROR", message: "Internal error" } });
   });
 
+  const baseLogger = options.loggerInstance ?? pino({ level: "silent" });
+  const eventBus = options.eventBus ?? createPipelineEventBus();
+
   fastify.register(projectsRoutes, { store: options.store });
+  fastify.register(assetsRoutes);
+  fastify.register(projectAssetsRoutes, { projectsRoot: options.store.projectsRoot });
+  fastify.register(renderRoutes, {
+    store: options.store,
+    eventBus,
+    baseLogger,
+    vbeeCredentials: options.vbeeCredentials,
+  });
+  fastify.register(eventsRoutes, { eventBus });
 
   return fastify;
 }

@@ -57,7 +57,8 @@ describe("NewProjectPage", () => {
       aspectRatio: "16:9",
       schemaVersion: 1,
       createdAt: new Date().toISOString(),
-      scenes: [{ narration: "Xin chao", imagePrompt: "beach" }],
+      runStatus: "idle",
+      scenes: [{ narration: "Xin chao", imagePrompt: "beach", status: "pending", attempts: 0 }],
     };
     const createSpy = vi.spyOn(apiClient, "createProject").mockResolvedValue(project);
     renderPage();

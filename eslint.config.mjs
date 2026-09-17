@@ -30,9 +30,13 @@ export default tseslint.config(
     },
   },
   {
-    // Root/package config files aren't included in any package's tsconfig, so
-    // type-aware rules can't run on them — lint as plain (non type-checked) TS/JS.
-    files: ["**/*.config.{js,mjs,ts}", "eslint.config.mjs"],
+    // Root/package config files, plus one-off dev scripts, aren't included in any package's
+    // tsconfig, so type-aware rules can't run on them — lint as plain (non type-checked) TS/JS.
+    files: [
+      "**/*.config.{js,mjs,ts}",
+      "eslint.config.mjs",
+      "be/src/render/fixtures/generate-fixtures.mjs",
+    ],
     extends: [tseslint.configs.disableTypeChecked],
   },
   eslintConfigPrettier,

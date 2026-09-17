@@ -12,8 +12,12 @@ const env = loadEnv();
 const logger = createLogger(env);
 const projectsRoot = env.PROJECTS_DIR ?? path.resolve(__dirname, "..", "..", "projects");
 const store = createProjectStore(projectsRoot);
+const vbeeCredentials =
+  env.VBEE_APP_ID && env.VBEE_TOKEN
+    ? { appId: env.VBEE_APP_ID, token: env.VBEE_TOKEN, webhookUrl: env.VBEE_WEBHOOK_URL }
+    : undefined;
 
-const app = buildApp({ store, loggerInstance: logger });
+const app = buildApp({ store, loggerInstance: logger, vbeeCredentials });
 
 async function start(): Promise<void> {
   try {

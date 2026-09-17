@@ -13,6 +13,10 @@ The API contract is the **source of truth** for the frontend to consume.
 - Status codes: `200` read/update ok, `201` resource created (`POST /api/projects`), `204` no body, `400` validation error, `404` not found, `409` conflicting state transition (e.g. approving a scene mid-generation), `500` unexpected.
 - Request/response shapes: validate at the boundary with zod schemas shared between route and handler; declare shapes explicitly, no implicit `any` body.
 - Endpoint naming: plural nouns, nested by ownership — `POST /api/projects`, `GET /api/projects/:id`, `POST /api/projects/:id/scenes/:index/regenerate`, `POST /api/projects/:id/render`.
+- `GET /api/projects/:id/assets/*` (`be/src/routes/project-assets.ts`, task 003): serves a project's real generated images/audio from `projects/<id>/assets/**`, used by both the pipeline's render step and (once wired) the Player preview, per `video.md`'s "preview and render see identical bytes" rule.
+- `POST /api/projects/:id/render` (`be/src/routes/render.ts`, task 003): starts that project's pipeline run in the background (`202`, no body contract yet) and returns immediately; progress is observed over the SSE stream below, not this response. Wires the fake image/tts providers until tasks 004/005 land the real ones.
+- `GET /api/projects/:id/events` (`be/src/routes/events.ts`, task 003): one SSE stream per project. Two named event types: `event: scene` (`{type, projectId, runId, sceneIndex, status}`, on every scene status change) and `event: log` (`{type, projectId, runId, level, time, stage, msg, sceneIndex?, attempt?}`, one per pipeline log line — see `../../.claude/rules/logging.md`).
+- **Temporary (task 002 only, still not removed):** `GET /api/samples/*` (`be/src/routes/assets.ts`) still serves the fixed 3-scene sample fixture set for the task-002 render integration test and demo `/preview` page. Task 003 added the REAL per-project route above alongside it rather than replacing it, since the demo page still depends on the fixed samples; remove both the sample route and the demo page together once the real project pipeline covers that page's purpose.
 
 ## Error shape
 

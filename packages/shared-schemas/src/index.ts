@@ -51,6 +51,8 @@ export const ttsOptionsSchema = z
   })
   .strict();
 
+export type TtsOptions = z.infer<typeof ttsOptionsSchema>;
+
 export const aspectRatioSchema = z.enum(["16:9", "9:16"]);
 
 export const sceneSchema = z
@@ -72,13 +74,105 @@ export const scriptInputSchema = z
 
 export type ScriptInput = z.infer<typeof scriptInputSchema>;
 
+/** Per-scene pipeline state (task 003): pending -> generating_image -> generating_audio ->
+ * ready_for_render, or failed once its retry schedule is exhausted (see
+ * be/.claude/rules/backend-conventions.md and ../../../.claude/rules/error-handling.md). */
+export const sceneStatusSchema = z.enum([
+  "pending",
+  "generating_image",
+  "generating_audio",
+  "ready_for_render",
+  "failed",
+]);
+
+export type SceneStatus = z.infer<typeof sceneStatusSchema>;
+
+export const sceneErrorSchema = z
+  .object({
+    code: z.string(),
+    message: z.string(),
+  })
+  .strict();
+
+/** Project-level render run status: idle (no run started yet), running, completed (output.mp4
+ * written), or failed (a scene exhausted its retries or hit a needs_user/fatal error). */
+export const runStatusSchema = z.enum(["idle", "running", "completed", "failed"]);
+
+export type RunStatus = z.infer<typeof runStatusSchema>;
+
+/** A scene as stored in project.json: the user's input scene plus its pipeline runtime state.
+ * `imageFile`/`audioFile` are paths relative to the project's `assets/` folder. */
+export const projectSceneSchema = sceneSchema.extend({
+  status: sceneStatusSchema,
+  attempts: z.number().int().min(0),
+  imageFile: z.string().optional(),
+  // The generated image's real pixel size, needed by computeSafeViewport (video.md) to crop
+  // correctly when it differs from the fake 1920x1080 default (real Flow images are 1376x768).
+  imageWidth: z.number().int().positive().optional(),
+  imageHeight: z.number().int().positive().optional(),
+  audioFile: z.string().optional(),
+  audioDurationMs: z.number().nonnegative().optional(),
+  // Vbee-specific resume state (be/.claude/rules/vbee-tts.md, task 004): written atomically the
+  // moment a POST returns 201, BEFORE polling starts, so a crash mid-poll resumes by GETting the
+  // SAME request instead of re-submitting (and re-spending credit). A fake/future provider that
+  // completes synchronously never sets these.
+  audioRequestId: z.string().optional(),
+  audioRequestSubmittedAt: z.iso.datetime().optional(),
+  lastError: sceneErrorSchema.optional(),
+});
+
+export type ProjectScene = z.infer<typeof projectSceneSchema>;
+
 export const projectSchema = scriptInputSchema.extend({
   id: z.uuid(),
   schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
   createdAt: z.iso.datetime(),
+  scenes: z.array(projectSceneSchema).min(1),
+  runId: z.uuid().optional(),
+  runStatus: runStatusSchema,
+  outputFile: z.string().optional(),
 });
 
 export type Project = z.infer<typeof projectSchema>;
+
+/** SSE event contract for `GET /api/projects/:id/events` (be/.claude/rules/api-design.md), the
+ * SINGLE definition both `be/src/pipeline/pipeline-events.ts` and
+ * `fe/src/hooks/use-project-events.ts` validate against — a duplicated hand-rolled shape on
+ * either side can silently drift from the other (architecture.md DRY). */
+export const scenePipelineEventSchema = z
+  .object({
+    type: z.literal("scene"),
+    projectId: z.uuid(),
+    runId: z.uuid(),
+    sceneIndex: z.number().int().nonnegative(),
+    status: sceneStatusSchema,
+  })
+  .strict();
+
+export type ScenePipelineEvent = z.infer<typeof scenePipelineEventSchema>;
+
+export const logPipelineEventSchema = z
+  .object({
+    type: z.literal("log"),
+    projectId: z.uuid(),
+    runId: z.uuid(),
+    level: z.enum(["info", "warn", "error"]),
+    time: z.number(),
+    stage: z.string(),
+    msg: z.string(),
+    sceneIndex: z.number().int().nonnegative().optional(),
+    attempt: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+export type LogPipelineEvent = z.infer<typeof logPipelineEventSchema>;
+
+export const pipelineEventSchema = z.discriminatedUnion("type", [
+  scenePipelineEventSchema,
+  logPipelineEventSchema,
+]);
+
+export type PipelineEvent = z.infer<typeof pipelineEventSchema>;
 
 export const projectIdParamsSchema = z
   .object({

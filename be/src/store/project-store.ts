@@ -17,6 +17,15 @@ import { AppError } from "../domain/app-error.ts";
 export interface ProjectStore {
   create(input: ScriptInput): Promise<Project>;
   read(id: string): Promise<Project>;
+  /** Atomically read-modify-write project.json: `mutate` receives the CURRENT on-disk project
+   * and returns the next one, queued per-project (see ../../.claude/rules/data-layer.md) so two
+   * concurrent scene-state writes never interleave. The result is validated against
+   * `projectSchema` before it is written, so a bug in `mutate` fails loudly instead of corrupting
+   * the file on disk. */
+  update(id: string, mutate: (project: Project) => Project): Promise<Project>;
+  /** The on-disk root every project folder lives under — needed by the per-project asset route
+   * to serve `projects/<id>/assets/**` (video.md) without the route re-deriving the path itself. */
+  readonly projectsRoot: string;
 }
 
 /** One project = one folder under projectsRoot, containing project.json (see ../../.claude/rules/data-layer.md). */
@@ -48,6 +57,8 @@ export function createProjectStore(projectsRoot: string): ProjectStore {
       id,
       schemaVersion: CURRENT_SCHEMA_VERSION,
       createdAt: new Date().toISOString(),
+      runStatus: "idle",
+      scenes: input.scenes.map((scene) => ({ ...scene, status: "pending", attempts: 0 })),
     };
 
     await queueFor(id).add(async () => {
@@ -58,7 +69,7 @@ export function createProjectStore(projectsRoot: string): ProjectStore {
     return project;
   }
 
-  async function read(id: string): Promise<Project> {
+  async function readFromDisk(id: string): Promise<Project> {
     let raw: string;
     try {
       raw = await fs.readFile(projectFile(id), "utf8");
@@ -109,5 +120,15 @@ export function createProjectStore(projectsRoot: string): ProjectStore {
     return parsed.data;
   }
 
-  return { create, read };
+  async function update(id: string, mutate: (project: Project) => Project): Promise<Project> {
+    return queueFor(id).add(async () => {
+      const current = await readFromDisk(id);
+      const next = mutate(current);
+      const validated = projectSchema.parse(next);
+      await writeFileAtomic(projectFile(id), JSON.stringify(validated, null, 2));
+      return validated;
+    });
+  }
+
+  return { create, read: readFromDisk, update, projectsRoot };
 }

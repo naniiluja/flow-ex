@@ -1,7 +1,10 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": ["node"],
+    // be/ has no JSX of its own, but it imports @flow-ex/video (a .tsx package) directly by
+    // source, so tsc must be able to parse that dependency's syntax too.
+    "jsx": "react-jsx"
   },
   "include": ["src"]
 }
