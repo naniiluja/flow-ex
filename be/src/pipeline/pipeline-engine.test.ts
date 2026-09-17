@@ -564,10 +564,13 @@ describe("createPipelineEngine — concurrent image phase (task 014)", () => {
     title: "Sau canh",
     voice: "hn_female_ngochuyen_full_48k-fhg",
     aspectRatio: "16:9",
+    preset: "youtube",
     reviewEnabled: false,
+    references: [],
     scenes: Array.from({ length: 6 }, (_, i) => ({
       narration: `Canh so ${String(i)}`,
       imagePrompt: `prompt ${String(i)}`,
+      referenceIds: [],
     })),
   };
 

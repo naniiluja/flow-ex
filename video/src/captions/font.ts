@@ -62,7 +62,10 @@ export function loadCaptionFont(options: LoadCaptionFontOptions = {}): LoadCapti
     return cached;
   }
 
-  const { fontFamily, waitUntilDone } = loadFont("normal", { weights: [weight], subsets: [...subsets] });
+  const { fontFamily, waitUntilDone } = loadFont("normal", {
+    weights: [weight],
+    subsets: [...subsets],
+  });
   const result: LoadCaptionFontResult = { fontFamily };
   fontCache.set(key, result);
 
