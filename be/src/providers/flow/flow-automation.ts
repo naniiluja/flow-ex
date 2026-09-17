@@ -18,7 +18,6 @@ const PROMPT_EDITOR_SELECTOR = ".ProseMirror";
 const AGENT_MODE_CHIP_SELECTOR = "button.agent-mode-chip";
 const SETTINGS_TRIGGER_SELECTOR = "button.settings-trigger-button";
 const GENERATE_BUTTON_SELECTOR = "button.generate-icon-button";
-const GENERATED_IMAGE_SELECTOR = "flow-image-tile img";
 
 const LOGIN_CHECK_TIMEOUT_MS = 5_000;
 const IMAGE_GENERATION_TIMEOUT_MS = 90_000; // observed ~25-30s live; wide margin for slow runs
@@ -168,42 +167,52 @@ function extractUuid(src: string): string | undefined {
   return uuid === undefined || uuid.length === 0 ? undefined : uuid;
 }
 
-/** `createFlowImageProvider` reuses the SAME `Page` across every scene
- * (../../.claude/rules/flow-automation.md's "connection reuse"), so a PRIOR scene's `<img>` tile
- * is still in the DOM when this scene submits. Snapshotting the UUIDs already present before
- * clicking generate, then waiting for one NOT in that set, is what tells "just generated" apart
- * from "already there" — waiting for merely `flow-image-tile img` to exist would resolve
- * instantly against the stale tile and hand back the WRONG scene's image. */
-async function collectExistingImageUuids(page: Page): Promise<Set<string>> {
-  const srcs = await page
-    .locator(GENERATED_IMAGE_SELECTOR)
-    .evaluateAll((imgs) => imgs.map((img) => (img as HTMLImageElement).src));
-  const uuids = new Set<string>();
-  for (const src of srcs) {
-    const uuid = extractUuid(src);
-    if (uuid !== undefined) {
-      uuids.add(uuid);
-    }
-  }
-  return uuids;
+const TILE_SELECTOR = "flow-image-tile";
+
+export interface PendingSubmission {
+  /** The DOM index (0-based) of the `flow-image-tile` this submit just created, per
+   * `../../.claude/rules/flow-automation.md`'s "Tile identity" note: a `generate-icon-button`
+   * click synchronously APPENDS a new `flow-image-tile` to the tile list before any async decode
+   * work happens, so the tile at `tileCountBefore` (captured right before the click) is
+   * deterministically the one THIS submit created, regardless of how many OTHER submits are
+   * interleaved on the same page — each one reads its own count immediately before its own click,
+   * while holding the submit mutex, so no two submits can ever read the same index. */
+  tileIndex: number;
 }
 
-/** Submits the prompt (the send button auto-waits to become enabled once the editor has text)
- * and waits for a NEWLY generated `<img>` tile to appear (see `collectExistingImageUuids`'s doc
- * comment for why "new" must be checked explicitly), returning its `src` and the stable image
- * UUID Flow embeds in that URL. `timeoutMs` is injectable so a test can shrink the wait budget
- * instead of the real ~90s default. */
-export async function submitAndWaitForImage(
+/** Task 014: replaces the old UUID-diffing approach (kept only in git history). Two concurrent
+ * `generateImage` calls sharing one `Page` used to snapshot "existing UUIDs" and race each other
+ * for whichever `<img>` appeared first, silently swapping scenes' images. This function must be
+ * called while holding the caller's submit mutex (`./submit-mutex.ts`) — it does the ONE part of
+ * a submission that touches shared page state (the click + reading the tile list), and hands back
+ * a `tileIndex` cheap enough to identify without any further shared-state reads. The 25-30s decode
+ * wait (`waitForImageAtTile`) is deliberately NOT part of this function, so it can run OUTSIDE the
+ * mutex — multiple scenes' decode waits proceed in parallel once each has its own tile handle. */
+export async function submitImage(
   page: Page,
   timeoutMs = IMAGE_GENERATION_TIMEOUT_MS,
-): Promise<GeneratedImageRef> {
-  const existingUuids = await collectExistingImageUuids(page);
-
-  // click()'s own {timeout} budget is separate from the polling deadline below; computing the
-  // deadline BEFORE the click (not after) keeps the total worst case bounded by `timeoutMs`
-  // instead of potentially doubling it (click could legitimately take close to its own timeout).
-  const deadline = Date.now() + timeoutMs;
+): Promise<PendingSubmission> {
+  const tileCountBefore = await page.locator(TILE_SELECTOR).count();
   await page.locator(GENERATE_BUTTON_SELECTOR).click({ timeout: timeoutMs });
+  await page
+    .locator(TILE_SELECTOR)
+    .nth(tileCountBefore)
+    .waitFor({ state: "attached", timeout: timeoutMs });
+  return { tileIndex: tileCountBefore };
+}
+
+/** Polls the SPECIFIC tile at `tileIndex` (never any other tile, so it can run concurrently with
+ * other scenes' own `waitForImageAtTile` calls against the same page without any shared-state
+ * race) until its `<img>` has finished decoding, mirroring the same "both `complete` AND
+ * `naturalWidth/Height` positive" check the old implementation used
+ * (../../.claude/rules/flow-automation.md's stale-image guard doc). */
+export async function waitForImageAtTile(
+  page: Page,
+  tileIndex: number,
+  timeoutMs = IMAGE_GENERATION_TIMEOUT_MS,
+): Promise<GeneratedImageRef> {
+  const deadline = Date.now() + timeoutMs;
+  const imgLocator = page.locator(TILE_SELECTOR).nth(tileIndex).locator("img");
 
   let result: { src: string; width: number; height: number } | undefined;
   while (result === undefined) {
@@ -211,27 +220,24 @@ export async function submitAndWaitForImage(
       throw new AppError({
         code: "FLOW_IMAGE_GENERATION_TIMEOUT",
         errorKind: "transient",
-        message: `no new generated image appeared within ${String(timeoutMs)}ms`,
+        message: `no generated image appeared at tile ${String(tileIndex)} within ${String(timeoutMs)}ms`,
       });
     }
-    const candidates = await page.locator(GENERATED_IMAGE_SELECTOR).evaluateAll((imgs) =>
-      imgs.map((img) => {
+    const count = await imgLocator.count();
+    if (count > 0) {
+      const candidate = await imgLocator.first().evaluate((img) => {
         const el = img as HTMLImageElement;
         return {
           src: el.src,
           width: el.naturalWidth,
           height: el.naturalHeight,
-          // `complete` alone can be true with naturalWidth still 0 for a broken/not-yet-decoded
-          // image; requiring BOTH is what actually proves the browser has finished decoding real
-          // pixels, not just that the <img> element exists in the DOM.
           decoded: el.complete && el.naturalWidth > 0 && el.naturalHeight > 0,
         };
-      }),
-    );
-    result = candidates.find((candidate) => {
-      const uuid = extractUuid(candidate.src);
-      return uuid !== undefined && !existingUuids.has(uuid) && candidate.decoded;
-    });
+      });
+      if (candidate.decoded) {
+        result = candidate;
+      }
+    }
     if (result === undefined) {
       await page.waitForTimeout(500);
     }
@@ -247,4 +253,16 @@ export async function submitAndWaitForImage(
     });
   }
   return { src: result.src, uuid, width: result.width, height: result.height };
+}
+
+/** Composition of `submitImage` + `waitForImageAtTile` for a SINGLE caller driving a page alone
+ * (fixture tests, and any single-scene caller with no concurrency to guard against). A caller
+ * running MULTIPLE scenes concurrently on one page must instead call `submitImage` inside its own
+ * submit mutex and `waitForImageAtTile` outside it — see `flow-image-provider.ts`. */
+export async function submitAndWaitForImage(
+  page: Page,
+  timeoutMs = IMAGE_GENERATION_TIMEOUT_MS,
+): Promise<GeneratedImageRef> {
+  const { tileIndex } = await submitImage(page, timeoutMs);
+  return waitForImageAtTile(page, tileIndex, timeoutMs);
 }

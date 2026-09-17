@@ -40,6 +40,9 @@ export interface RenderRouteOptions {
    * connection to leak, only a lazily-shared install/model-download promise. */
   transcriptionMode?: "fake" | "whisper";
   whisperOptions?: WhisperOptions;
+  /** Task 014: starting ceiling for how many scenes' image steps run concurrently against the
+   * shared Flow page. `server.ts` derives this from `env.FLOW_IMAGE_CONCURRENCY` (default 3). */
+  imageConcurrency?: number;
 }
 
 /** Starts a project's pipeline run in the background; progress is observed over SSE
@@ -105,6 +108,7 @@ const renderRoutes: FastifyPluginCallback<RenderRouteOptions> = (fastify, opts, 
         }),
         baseLogger: opts.baseLogger,
         eventBus: opts.eventBus,
+        imageConcurrency: opts.imageConcurrency,
       });
 
       activeRuns.add(id);

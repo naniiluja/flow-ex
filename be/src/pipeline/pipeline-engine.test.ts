@@ -70,6 +70,8 @@ function buildEngine(
     eventBus?: PipelineEventBus;
     baseLogger?: Logger;
     transcriptionProvider?: TranscriptionProvider;
+    imageConcurrency?: number;
+    signal?: AbortSignal;
   } = {},
 ) {
   return createPipelineEngine({
@@ -82,6 +84,8 @@ function buildEngine(
     jitter: NO_JITTER,
     videoRenderer: overrides.videoRenderer ?? NOOP_RENDERER,
     eventBus: overrides.eventBus,
+    imageConcurrency: overrides.imageConcurrency,
+    signal: overrides.signal,
   });
 }
 
@@ -226,7 +230,13 @@ describe("createPipelineEngine", () => {
     expect(scene0.attempts).toBeGreaterThanOrEqual(3 + 1); // image attempts + 1 audio attempt
   });
 
-  it("marks the scene and the run failed once retries are exhausted, without touching later scenes", async () => {
+  it("marks every scene and the run failed once retries are exhausted, and never starts audio", async () => {
+    // Task 014: the image phase now runs every scene's image step CONCURRENTLY (default
+    // concurrency 3, both scenes here fit in one batch), so a provider that always rejects fails
+    // BOTH scenes' image steps (not just the first one it happens to reach) before the run is
+    // marked failed — a real behavior change from the old strictly-sequential loop, where scene 1
+    // was never even attempted. Audio never starts either way, since the whole image phase must
+    // succeed before phase 2 begins.
     const project = await store.create(SCRIPT_2_SCENES);
     const persistentError = new AppError({
       code: "FLOW_DOWN",
@@ -250,7 +260,8 @@ describe("createPipelineEngine", () => {
     expect(scene0.lastError).toEqual({ code: "FLOW_DOWN", message: "always fails" });
     const scene1 = finalProject.scenes[1];
     if (scene1 === undefined) throw new Error("expected scene 1");
-    expect(scene1.status).toBe("pending"); // never reached
+    expect(scene1.status).toBe("failed"); // also attempted, concurrently with scene 0
+    expect(scene1.lastError).toEqual({ code: "FLOW_DOWN", message: "always fails" });
     expect(synthesize).not.toHaveBeenCalled();
   });
 
@@ -520,4 +531,175 @@ describe("createPipelineEngine", () => {
     expect(scene0.audioFile).toBe("audio.wav"); // the already-generated audio is left in place
     expect(scene0.lastError).toEqual({ code: "WHISPER_DOWN", message: "always fails" });
   });
+});
+
+/**
+ * Task 014: EP/BVA matrix for the concurrent image phase's own behavior (independent of any
+ * particular `ImageProvider` implementation — the fake providers below stand in for
+ * `FlowImageProvider`, whose own submit-mutex/tile-index behavior is covered separately in
+ * `providers/flow/flow-automation.test.ts`).
+ *
+ * | Scenario                                                    | Expected                                |
+ * | -------------------------------------------------------------- | -------------------------------------------- |
+ * | concurrency 1 (BVA min)                                          | all scenes still complete, correctly assigned |
+ * | concurrency 3 (default)                                            | wall time < sequential time; no cross-scene mixup |
+ * | concurrency greater than scene count                                 | no crash, all scenes complete once           |
+ * | one scene's image fails partway through the batch                       | the other scenes still complete normally  |
+ * | AbortSignal fires mid-batch                                                | every in-flight image task stops, nothing hangs |
+ */
+describe("createPipelineEngine — concurrent image phase (task 014)", () => {
+  let root: string;
+  let store: ProjectStore;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "flow-ex-pipeline-concurrency-"));
+    store = createProjectStore(root);
+  });
+
+  afterEach(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  const SCRIPT_6_SCENES: ScriptInput = {
+    title: "Sau canh",
+    voice: "hn_female_ngochuyen_full_48k-fhg",
+    aspectRatio: "16:9",
+    reviewEnabled: false,
+    scenes: Array.from({ length: 6 }, (_, i) => ({
+      narration: `Canh so ${String(i)}`,
+      imagePrompt: `prompt ${String(i)}`,
+    })),
+  };
+
+  // Large enough that the artificial delay dominates over real store.update()/disk I/O overhead
+  // (write-file-atomic per scene transition), so the concurrency win is measured cleanly.
+  const IMAGE_DELAY_MS = 300;
+
+  /** Embeds `sceneIndex` into the returned file name (like `FakeImageProvider` really does) so a
+   * test can assert each scene's PERSISTED `imageFile` matches ITS OWN sceneIndex, not a
+   * neighbor's — the exact class of bug a concurrency race would produce. */
+  function delayedImageProvider(): ImageProvider {
+    return {
+      generateImage: vi.fn<ImageProvider["generateImage"]>(async (_prompt, ctx) => {
+        await new Promise((resolve) => setTimeout(resolve, IMAGE_DELAY_MS));
+        return {
+          file: `images/${String(ctx.sceneIndex)}-generated.png`,
+          width: 1920,
+          height: 1080,
+        };
+      }),
+    };
+  }
+
+  it.each([1, 3, 10])(
+    "with imageConcurrency %i, every scene completes and keeps its OWN image file",
+    async (imageConcurrency) => {
+      const project = await store.create(SCRIPT_6_SCENES);
+      const imageProvider = delayedImageProvider();
+      const synthesize = vi
+        .fn<TtsProvider["synthesize"]>()
+        .mockResolvedValue({ file: "audio.wav", durationMs: 1000 });
+
+      const result = await buildEngine(
+        store,
+        imageProvider,
+        { synthesize },
+        { imageConcurrency },
+      ).run(project.id);
+
+      expect(result.runStatus).toBe("completed");
+      result.scenes.forEach((scene, sceneIndex) => {
+        expect(scene.status).toBe("ready_for_render");
+        expect(scene.imageFile).toBe(`images/${String(sceneIndex)}-generated.png`);
+      });
+    },
+  );
+
+  it("with the default concurrency, wall time is well under the fully-sequential baseline", async () => {
+    const project = await store.create(SCRIPT_6_SCENES);
+    const imageProvider = delayedImageProvider();
+    const synthesize = vi
+      .fn<TtsProvider["synthesize"]>()
+      .mockResolvedValue({ file: "audio.wav", durationMs: 1000 });
+
+    const startedAt = Date.now();
+    await buildEngine(store, imageProvider, { synthesize }, { imageConcurrency: 3 }).run(
+      project.id,
+    );
+    const elapsedMs = Date.now() - startedAt;
+    const sequentialBaselineMs = SCRIPT_6_SCENES.scenes.length * IMAGE_DELAY_MS;
+
+    // 6 scenes at concurrency 3 -> 2 batches, so the image phase alone should be roughly
+    // 2*IMAGE_DELAY_MS, well under 60% of the 6*IMAGE_DELAY_MS sequential baseline even counting
+    // the sequential audio phase's own (near-zero, mocked) time.
+    expect(elapsedMs).toBeLessThan(sequentialBaselineMs * 0.6);
+  });
+
+  it("one scene's image failure does not stop the OTHER scenes from completing their image step", async () => {
+    const project = await store.create(SCRIPT_6_SCENES);
+    const persistentError = new AppError({
+      code: "FLOW_DOWN",
+      errorKind: "transient",
+      message: "scene 2 always fails",
+    });
+    const generateImage = vi
+      .fn<ImageProvider["generateImage"]>()
+      .mockImplementation(async (_prompt, ctx) => {
+        await new Promise((resolve) => setTimeout(resolve, IMAGE_DELAY_MS));
+        if (ctx.sceneIndex === 2) {
+          throw persistentError;
+        }
+        return { file: `images/${String(ctx.sceneIndex)}.png`, width: 1920, height: 1080 };
+      });
+    const synthesize = vi.fn<TtsProvider["synthesize"]>();
+
+    await expect(
+      buildEngine(store, { generateImage }, { synthesize }, { imageConcurrency: 3 }).run(
+        project.id,
+      ),
+    ).rejects.toBe(persistentError);
+
+    const finalProject = await store.read(project.id);
+    expect(finalProject.runStatus).toBe("failed");
+    finalProject.scenes.forEach((scene, sceneIndex) => {
+      if (sceneIndex === 2) {
+        expect(scene.status).toBe("failed");
+      } else {
+        // Every OTHER scene's image step still ran to completion despite scene 2's failure.
+        expect(scene.imageFile).toBe(`images/${String(sceneIndex)}.png`);
+      }
+    });
+  });
+
+  it("an AbortSignal fired mid-batch stops every in-flight image task without hanging", async () => {
+    const project = await store.create(SCRIPT_6_SCENES);
+    const controller = new AbortController();
+    const generateImage = vi
+      .fn<ImageProvider["generateImage"]>()
+      .mockImplementation(async (_prompt, ctx) => {
+        await new Promise((resolve) => setTimeout(resolve, IMAGE_DELAY_MS));
+        throw new AppError({
+          code: "FLOW_DOWN",
+          errorKind: "transient",
+          message: `scene ${String(ctx.sceneIndex)} transient failure`,
+        });
+      });
+    const synthesize = vi.fn<TtsProvider["synthesize"]>();
+
+    const runPromise = buildEngine(
+      store,
+      { generateImage },
+      { synthesize },
+      // A long retry schedule that would hang the test for real if the abort signal were not
+      // honored — `retryWithSchedule` (error-handling.md) cancels its own backoff wait on abort.
+      { imageConcurrency: 3, scheduleMs: [60_000, 60_000, 60_000], signal: controller.signal },
+    ).run(project.id);
+    setTimeout(() => {
+      controller.abort();
+    }, IMAGE_DELAY_MS * 2);
+
+    await expect(runPromise).rejects.toBeDefined();
+    const finalProject = await store.read(project.id);
+    expect(finalProject.runStatus).toBe("failed"); // never hung; the run resolved to a terminal state
+  }, 10_000);
 });

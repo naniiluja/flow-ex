@@ -13,8 +13,11 @@ import {
   ensureAgentModeOff,
   ensureLoggedIn,
   submitAndWaitForImage,
+  submitImage,
   typeIntoPromptBox,
+  waitForImageAtTile,
 } from "./flow-automation.ts";
+import { createSubmitMutex } from "./submit-mutex.ts";
 
 const FIXTURE_PATH = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -197,6 +200,54 @@ describe("flow-automation against the Flow fixture", () => {
         error.code === "FLOW_REFERENCE_ASSET_NOT_FOUND" &&
         error.errorKind === "fatal",
     );
+  });
+
+  /**
+   * Task 014 regression: proves the tile-index design survives 3 jobs submitted back-to-back on
+   * the SAME page (one job's `submitImage` runs only after the previous one released the mutex,
+   * matching real usage in `flow-image-provider.ts`), whose images then finish DECODING in a
+   * REVERSED order (job 3 first, job 1 last, via the fixture's injectable per-submit delay) —
+   * each job must still receive its OWN image, never one lifted from another job.
+   *
+   * This is exactly the scenario the OLD `collectExistingImageUuids`-diffing implementation
+   * could not survive: two/three calls sharing one "snapshot of existing UUIDs taken before
+   * MY click" would each resolve against whichever `<img>` (not-in-that-snapshot) appeared
+   * FIRST, regardless of which job's own click produced it — job 1's snapshot (taken before
+   * ANY of the 3 clicks even race to be first) would just as happily match job 3's fast image.
+   * The new design instead binds each job to the DOM tile index captured atomically with its
+   * own click while holding the shared-page mutex, so completion order cannot matter.
+   */
+  it("keeps each job's own image even when 3 jobs finish decoding in REVERSED order (task 014)", async () => {
+    await loadFixture();
+    const mutex = createSubmitMutex();
+    // Job 1 finishes LAST (300ms), job 3 finishes FIRST (50ms).
+    await page.evaluate(() => {
+      (window as unknown as { __flowFixtureDelaysMs: number[] }).__flowFixtureDelaysMs = [
+        300, 200, 50,
+      ];
+    });
+
+    async function runJob(prompt: string): Promise<{ prompt: string; uuid: string }> {
+      const submission = await mutex.runExclusive(async () => {
+        await typeIntoPromptBox(page, prompt);
+        return submitImage(page, 5_000);
+      });
+      const image = await waitForImageAtTile(page, submission.tileIndex, 5_000);
+      return { prompt, uuid: image.uuid };
+    }
+
+    const [job1, job2, job3] = await Promise.all([
+      runJob("job one prompt"),
+      runJob("job two prompt"),
+      runJob("job three prompt"),
+    ]);
+
+    // Each job's uuid encodes its OWN generation order (1st/2nd/3rd click), not its finish order.
+    expect(job1.uuid).toMatch(/-000000000001$/);
+    expect(job2.uuid).toMatch(/-000000000002$/);
+    expect(job3.uuid).toMatch(/-000000000003$/);
+    const uuids = new Set([job1.uuid, job2.uuid, job3.uuid]);
+    expect(uuids.size).toBe(3); // no two jobs collapsed onto the same image
   });
 });
 

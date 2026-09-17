@@ -15,9 +15,11 @@ import {
   configureAspectRatioAndBatch,
   ensureAgentModeOff,
   ensureLoggedIn,
-  submitAndWaitForImage,
+  submitImage,
   typeIntoPromptBox,
+  waitForImageAtTile,
 } from "./flow-automation.ts";
+import { createSubmitMutex, type SubmitMutex } from "./submit-mutex.ts";
 
 const CONTENT_TYPE_EXTENSION: Record<string, string> = {
   "image/png": "png",
@@ -107,12 +109,16 @@ export async function downloadImage(
 /** Real `ImageProvider` (../../.claude/rules/architecture.md provider/strategy pattern) driving
  * Google Flow through a real, dedicated Chrome profile over CDP. Replaces `FakeImageProvider`
  * (task 003) when wired in. Connects lazily on first use and reuses the SAME browser/page across
- * calls (`pipeline-engine.ts` only ever calls one scene's image step at a time, so no
- * concurrency guard is needed — the same reasoning `vbee-tts.md` recorded for Vbee). Never calls
- * `browser.close()`: the dedicated Chrome window is the user's to watch/close, and closing a
- * CDP-attached browser can terminate the underlying process. */
+ * calls. **Task 014:** `pipeline-engine.ts` now runs multiple scenes' image steps CONCURRENTLY
+ * against this one shared page, so a single `SubmitMutex` (one per provider instance, i.e. per
+ * page) serializes only the shared-page-mutation part of each submission (agent mode, aspect
+ * ratio, typing, the generate click) — the ~25-30s decode wait runs outside it, so scenes'
+ * decode waits overlap for real. Never calls `browser.close()`: the dedicated Chrome window is
+ * the user's to watch/close, and closing a CDP-attached browser can terminate the underlying
+ * process. */
 export function createFlowImageProvider(options: FlowImageProviderOptions): ImageProvider {
   let connection: Promise<{ browser: Browser; context: BrowserContext; page: Page }> | undefined;
+  const submitMutex: SubmitMutex = createSubmitMutex();
 
   async function getConnection(): Promise<{
     browser: Browser;
@@ -175,10 +181,20 @@ export function createFlowImageProvider(options: FlowImageProviderOptions): Imag
       page = connected.page;
       const { context } = connected;
       await ensureLoggedIn(page);
-      await ensureAgentModeOff(page);
-      await configureAspectRatioAndBatch(page, ctx.aspectRatio);
-      await typeIntoPromptBox(page, prompt);
-      const generated = await submitAndWaitForImage(page);
+      // Only this part touches shared page state (agent mode chip, settings overlay, the ONE
+      // `.ProseMirror` editor, and reading the tile list on click) — held under the mutex so a
+      // concurrently-running OTHER scene can't interleave its own typing or misidentify which
+      // tile is its own (task 014).
+      const pageForSubmit = page;
+      const submission = await submitMutex.runExclusive(async () => {
+        await ensureAgentModeOff(pageForSubmit);
+        await configureAspectRatioAndBatch(pageForSubmit, ctx.aspectRatio);
+        await typeIntoPromptBox(pageForSubmit, prompt);
+        return submitImage(pageForSubmit);
+      });
+      // The decode wait (~25-30s observed live) runs OUTSIDE the mutex: multiple scenes each
+      // await their own tile index here in parallel once their own submission has been recorded.
+      const generated = await waitForImageAtTile(page, submission.tileIndex);
 
       const { buffer, extension } = await downloadImage(context, generated.src);
       // Flow's own generation UUID (unique per submit, flow-automation.md) makes the file name
