@@ -17,6 +17,7 @@
     "@remotion/bundler": "4.0.525",
     "@remotion/renderer": "4.0.525",
     "@remotion/install-whisper-cpp": "4.0.525",
+    "@remotion/captions": "4.0.525",
     "zod": "catalog:",
     "pino": "catalog:",
     "pino-pretty": "catalog:",
