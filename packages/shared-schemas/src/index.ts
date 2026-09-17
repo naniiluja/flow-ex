@@ -71,18 +71,37 @@ export type TtsOptions = z.infer<typeof ttsOptionsSchema>;
 export const aspectRatioSchema = z.enum(["16:9", "9:16"]);
 export type AspectRatio = z.infer<typeof aspectRatioSchema>;
 
+/** A reusable character/setting reference (task 013), generated ONCE via Flow's native
+ * "Nhân vật"/"Cảnh" asset picker (be/.claude/rules/flow-automation.md's reference-image section)
+ * and then attached to any scene's prompt via `referenceIds` below, so the same face/place stays
+ * visually consistent across every scene that reuses it instead of Flow re-imagining it per call. */
+export const referenceSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    kind: z.enum(["character", "setting"]),
+    name: z.string().trim().min(1),
+    prompt: z.string().trim().min(1),
+  })
+  .strict();
+
+export type Reference = z.infer<typeof referenceSchema>;
+
 export const sceneSchema = z
   .object({
     narration: z.string().trim().min(1),
     imagePrompt: z.string().trim().min(1),
+    // Which project-level `references[].id` this scene's image should stay consistent with
+    // (task 013). Empty/absent means the scene has no reference to attach — unrelated to
+    // `.strict()`'s "no unknown fields" rule, this is a deliberately optional KNOWN field.
+    referenceIds: z.array(z.string().trim().min(1)).default([]),
   })
   .strict();
 
 // Split into a plain ZodObject (`scriptInputObjectSchema`, still `.extend()`-able by
 // `projectSchema` below) and the public schema that also enforces/resolves the preset↔aspectRatio
-// invariant (`withPresetInvariant`) — a `.refine()`/`.transform()` chain returns a `ZodEffects`,
-// which has no `.extend()`, so `projectSchema` couldn't be built from the transformed schema
-// directly.
+// invariant (`withPresetInvariant`) and the reference-id cross-check (`referenceIdsAreDeclared`,
+// task 013) — a `.refine()`/`.transform()` chain returns a `ZodEffects`, which has no `.extend()`,
+// so `projectSchema` couldn't be built from the transformed/refined schema directly.
 export const scriptInputObjectSchema = z
   .object({
     title: z.string().trim().min(1),
@@ -101,6 +120,9 @@ export const scriptInputObjectSchema = z
     // /rules/flow-automation.md's review-gate design). Defaults off so tasks 002-005's existing
     // fake-provider e2e flow keeps completing straight through, unchanged.
     reviewEnabled: z.boolean().default(false),
+    // Project-level character/setting bible (task 013); scenes opt in via `referenceIds`.
+    // Defaults to [] so every project created before task 013 still parses.
+    references: z.array(referenceSchema).default([]),
     scenes: z.array(sceneSchema).min(1),
   })
   .strict();
@@ -124,7 +146,29 @@ function withPresetInvariant<Shape extends { preset?: Preset; aspectRatio?: Aspe
     }));
 }
 
-export const scriptInputSchema = withPresetInvariant(scriptInputObjectSchema);
+/** Every `scene.referenceIds` entry must point at a `references[].id` declared on the SAME
+ * object (task 013) — shared by `scriptInputSchema` and `projectSchema` so the check can't drift
+ * between the two call sites. Applied AFTER `withPresetInvariant`'s own transform, since that
+ * transform only touches `preset` and leaves `references`/`scenes` untouched. */
+function referenceIdsAreDeclared(input: {
+  references: Reference[];
+  scenes: { referenceIds: string[] }[];
+}): boolean {
+  const knownIds = new Set(input.references.map((reference) => reference.id));
+  return input.scenes.every((scene) =>
+    scene.referenceIds.every((referenceId) => knownIds.has(referenceId)),
+  );
+}
+
+const REFERENCE_IDS_REFINEMENT = {
+  message: "every scene.referenceIds entry must match a references[].id declared on the project",
+  path: ["scenes"],
+} as const;
+
+export const scriptInputSchema = withPresetInvariant(scriptInputObjectSchema).refine(
+  referenceIdsAreDeclared,
+  REFERENCE_IDS_REFINEMENT,
+);
 
 export type ScriptInput = z.infer<typeof scriptInputSchema>;
 
@@ -235,6 +279,15 @@ export const projectSceneSchema = sceneSchema.extend({
 
 export type ProjectScene = z.infer<typeof projectSceneSchema>;
 
+/** A project-level reference as stored in project.json: the input reference plus the Flow-generated
+ * asset that backs it (task 013). `imageFile` is unset until the pipeline's reference phase (phase
+ * 0, before any scene's own image step) generates it once. */
+export const projectReferenceSchema = referenceSchema.extend({
+  imageFile: z.string().optional(),
+});
+
+export type ProjectReference = z.infer<typeof projectReferenceSchema>;
+
 // Same `ZodObject`/`withPresetInvariant` split as `scriptInputObjectSchema`/`scriptInputSchema`
 // above, for the SAME reason plus one more: `@fastify/type-provider-zod`'s response serializer
 // runs zod in "encode" mode, which throws `ZodEncodeError` on a `.transform()` (a "unidirectional"
@@ -247,13 +300,17 @@ export const projectObjectSchema = scriptInputObjectSchema.extend({
   id: z.uuid(),
   schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
   createdAt: z.iso.datetime(),
+  references: z.array(projectReferenceSchema).default([]),
   scenes: z.array(projectSceneSchema).min(1),
   runId: z.uuid().optional(),
   runStatus: runStatusSchema,
   outputFile: z.string().optional(),
 });
 
-export const projectSchema = withPresetInvariant(projectObjectSchema);
+export const projectSchema = withPresetInvariant(projectObjectSchema).refine(
+  referenceIdsAreDeclared,
+  REFERENCE_IDS_REFINEMENT,
+);
 
 export type Project = z.infer<typeof projectSchema>;
 

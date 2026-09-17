@@ -47,8 +47,31 @@
           aria-label="Bắt đầu tạo"
           disabled
         ></button>
+        <button
+          class="add-menu-trigger"
+          type="button"
+          aria-label="Thêm thành phần vào ô nhập câu lệnh"
+        >
+          +
+        </button>
       </flow-base-prompt-box>
     </flow-prompt-box>
+
+    <!--
+      Task 013, verified live 2026-09-17: clicking `.add-menu-trigger` opens this asset picker.
+      Fixture ships exactly one pre-existing asset ("Cô bán cà phê") so a test can drive the real
+      search-then-click-then-add flow (`attachReferenceAssets` in flow-automation.ts) without a
+      live Flow account.
+    -->
+    <div id="asset-picker" hidden>
+      <input class="editable-text-input" placeholder="Tìm kiếm thành phần" />
+      <div role="listbox">
+        <div class="asset-item" data-name="Cô bán cà phê">Cô bán cà phê</div>
+      </div>
+      <div id="asset-detail" hidden>
+        <button class="detail-add-to-prompt-btn" type="button">Thêm vào câu lệnh</button>
+      </div>
+    </div>
 
     <div id="settings-overlay" hidden>
       <mat-button-toggle-group data-group="ratio">
@@ -70,6 +93,33 @@
       const agentChip = document.querySelector(".agent-mode-chip");
       const overlay = document.getElementById("settings-overlay");
       const tiles = document.getElementById("tiles");
+      const addMenuTrigger = document.querySelector(".add-menu-trigger");
+      const assetPicker = document.getElementById("asset-picker");
+      const assetSearchInput = assetPicker.querySelector(".editable-text-input");
+      const assetDetail = document.getElementById("asset-detail");
+      const addToPromptBtn = assetPicker.querySelector(".detail-add-to-prompt-btn");
+
+      addMenuTrigger.addEventListener("click", () => {
+        assetPicker.hidden = false;
+      });
+      assetSearchInput.addEventListener("input", () => {
+        const query = assetSearchInput.value.trim().toLowerCase();
+        for (const item of assetPicker.querySelectorAll(".asset-item")) {
+          item.style.display = item.dataset.name.toLowerCase().includes(query) ? "" : "none";
+        }
+      });
+      for (const item of assetPicker.querySelectorAll(".asset-item")) {
+        item.addEventListener("click", () => {
+          assetDetail.hidden = false;
+        });
+      }
+      addToPromptBtn.addEventListener("click", () => {
+        window.__flowFixtureAttachedReferences = window.__flowFixtureAttachedReferences || [];
+        window.__flowFixtureAttachedReferences.push(assetSearchInput.value);
+        assetPicker.hidden = true;
+        assetDetail.hidden = true;
+        assetSearchInput.value = "";
+      });
 
       function syncSettingsVisibility() {
         // Real Flow behavior verified live 2026-09-17: the settings trigger is only visible

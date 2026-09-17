@@ -55,6 +55,21 @@ Flow can change its UI at any time; run the preflight selector check before trus
 - `be/src/providers/select-providers.test.ts`'s `selectImageProvider` tests prove the SELECTION wiring (fake vs real, and the misconfiguration guard) without needing a working Chrome: the "real" case mocks only the CDP `/json/version` HTTP probe via msw (returning a response with no `webSocketDebuggerUrl`, which makes Playwright's own `connectOverCDP` fail fast during parsing) to prove the connection was attempted, not that it fully succeeds. (Moved out of `routes/` in task 006, alongside `createImageProviderFactory`, since the route layer no longer owns provider construction.)
 - `be/tsconfig.json` adds `"DOM"` to `lib` (replacing the base's `["ES2023"]`, since a child tsconfig's `lib` REPLACES rather than merges) because Playwright's own `Locator.evaluate()` types the resolved element as a DOM lib type regardless of the consumer's tsconfig. This is PROGRAM-WIDE, not scoped to `providers/flow/**` — a per-file `/// <reference lib="dom" />` was tried first and found to leak identically (TypeScript's `lib` references apply to the whole program, not just the file that declares them), so the honest tradeoff is documented here instead of hidden behind a misleading per-file comment: a stray `document`/`window`/`fetch` typo anywhere else in `be/` now type-checks instead of erroring.
 
+## Reference images (task 013, verified live 2026-09-17)
+
+- The "+" trigger beside the prompt box (`button.add-menu-trigger`) opens a project-asset picker
+  with a search box (`.editable-text-input`) and a list of `.asset-item` entries; selecting one
+  reveals a `button.detail-add-to-prompt-btn` ("Thêm vào câu lệnh") that inserts it as an inline
+  reference chip into the SAME `.ProseMirror` prompt box, without itself typing any text.
+- The sidebar's "Nhân vật"/"Cảnh" sections (icons `accessibility_new`/`movie`) are Flow's own
+  character/setting-consistency feature — create once (upload or describe), reuse via the "+"
+  picker above on any later prompt. Full detail + prompt-writing guidance: `../../.claude/rules/image-prompting.md`.
+- `attachReferenceAssets(page, referenceNames, timeoutMs?)` in `flow-automation.ts` drives this
+  picker by exact asset display name; throws `FLOW_REFERENCE_ASSET_NOT_FOUND` (`errorKind: fatal`)
+  if the name isn't found within the picker's search results. Fixture-tested in
+  `flow-automation.test.ts` against a hand-authored picker DOM added to `fixtures/flow-page.fixture.html`.
+- **Not yet wired into the live pipeline run** — see `image-prompting.md`'s "Known gap".
+
 ## Preflight
 
 - `be/src/providers/flow/preflight.ts`'s `checkFlowSelectors(page)` locates every selector above WITHOUT submitting a prompt; run it via `pnpm --filter be preflight:flow` before a run touches Flow. A missing selector means Flow's UI changed and the provider needs an update before the run proceeds. The image-tile selector (`flow-image-tile img`) is deliberately NOT included — it structurally does not exist until a prompt is submitted, so it's covered by the fixture test and the real smoke run instead.

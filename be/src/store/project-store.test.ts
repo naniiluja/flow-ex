@@ -6,19 +6,24 @@ import path from "node:path";
 import pino from "pino";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ScriptInput } from "@flow-ex/shared-schemas";
+import { scriptInputSchema, type ScriptInput } from "@flow-ex/shared-schemas";
 
 import { AppError } from "../domain/app-error.ts";
 import { createProjectStore, type ProjectStore } from "./project-store.ts";
 
-const validInput: ScriptInput = {
+// Parsed through the real schema (not a hand-written literal) so it carries the SAME defaults
+// (`references: []`, `scene.referenceIds: []`, task 013) that Fastify's zod type-provider already
+// applies to `request.body` before `store.create` ever sees it in production
+// (be/src/routes/projects.ts's `body: scriptInputSchema`) — a literal missing those fields would
+// make `store.create`'s output silently disagree with what the real route path produces.
+const validInput: ScriptInput = scriptInputSchema.parse({
   title: "Cau chuyen mua he",
   voice: "hn_female_ngochuyen_full_48k-fhg",
   aspectRatio: "16:9",
   preset: "youtube",
   reviewEnabled: false,
   scenes: [{ narration: "Xin chao", imagePrompt: "a sunny beach" }],
-};
+});
 
 describe("createProjectStore", () => {
   let root: string;
