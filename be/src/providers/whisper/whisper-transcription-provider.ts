@@ -16,6 +16,7 @@ import type {
   TranscriptionContext,
   TranscriptionProvider,
 } from "../../domain/providers.ts";
+import { alignCaptionsToNarration } from "./align-captions-to-narration.ts";
 import { convertToWav16kMono } from "./convert-to-wav.ts";
 
 export interface WhisperTranscriptionProviderOptions {
@@ -76,7 +77,12 @@ export function createWhisperTranscriptionProvider(
         tokenLevelTimestamps: true,
         language: "vi",
       });
-      const { captions } = toCaptions({ whisperCppOutput: whisperOutput });
+      const { captions: whisperCaptions } = toCaptions({ whisperCppOutput: whisperOutput });
+      // Whisper transcribes the AUDIO, so a word Vbee's voice pronounced ambiguously can come
+      // back misheard/misspelled; the pipeline already knows the exact script it sent to Vbee,
+      // so prefer that text and keep only whisper's real per-word timing (see
+      // align-captions-to-narration.ts's own doc comment for the exact-count-only guard).
+      const captions = alignCaptionsToNarration(whisperCaptions, context.narration);
 
       const fileName = `${String(context.sceneIndex).padStart(3, "0")}.json`;
       const captionsDir = path.join(options.assetsDir, "captions");

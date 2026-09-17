@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import {
   apiErrorBodySchema,
+  logPipelineEventSchema,
+  type LogPipelineEvent,
   type Project,
   projectSchema,
   projectSummarySchema,
@@ -73,6 +75,21 @@ export async function getProject(id: string): Promise<Project> {
   }
 
   return projectSchema.parse(await response.json());
+}
+
+const projectLogsResponseSchema = z.object({ logLines: z.array(logPipelineEventSchema) });
+
+/** History for the Log tab (`use-project-events.ts`'s `useProjectEvents`): the SSE stream only
+ * ever emits lines from the moment a client connects, so a page reload on a project whose run
+ * already progressed (or finished) needs this to see what happened before that reload. */
+export async function getProjectLogs(id: string): Promise<LogPipelineEvent[]> {
+  const response = await fetch(`/api/projects/${id}/logs`);
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+
+  return projectLogsResponseSchema.parse(await response.json()).logLines;
 }
 
 /** Task 006's review-gate routes (../../be/.claude/rules/api-design.md): both return the whole

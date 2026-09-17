@@ -17,6 +17,10 @@ export default defineConfig({
           name: "be",
           root: "be",
           environment: "node",
+          // `.whisper-cache/` is real whisper.cpp install output (task 007's `installWhisperCpp`,
+          // gitignored), not our source — it ships its own bundled test file that fails without
+          // its native addon built, and vitest's default include glob would otherwise pick it up.
+          exclude: ["**/node_modules/**", ".whisper-cache/**"],
           coverage: {
             include: ["src/pipeline/**"],
             thresholds: {

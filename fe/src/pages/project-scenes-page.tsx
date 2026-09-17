@@ -30,14 +30,24 @@ export function ProjectScenesPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl p-6">
+    // `w-full` is load-bearing, not decorative: AppShell's own <main> (app-shell.tsx) is a
+    // flex-col container, and a flex item with `width:auto` PLUS cross-axis `margin:auto`
+    // (mx-auto) disables the default stretch-to-fill behavior per the flexbox spec — the item
+    // instead shrinks to its own CONTENT width and only then gets centered by the auto margins.
+    // Scene grid content happens to be wide enough that this was invisible, but the Log tab's
+    // narrow box and the Video tab's narrow 9:16 player shrank the whole page down to their own
+    // width and visibly drifted to the middle of the content area. `w-full` gives the item an
+    // explicit width so `mx-auto` goes back to classically centering the (now correctly
+    // max-w-6xl-capped) box, instead of negotiating around flex stretch.
+    <main className="w-full max-w-6xl mx-auto p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link
             to="/"
-            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+            aria-label="Về dự án mới"
+            className="text-lg font-medium text-primary hover:underline"
           >
-            {"← Dự án mới"}
+            {"←"}
           </Link>
           <h1 className="text-lg font-medium">{project.title}</h1>
         </div>
@@ -114,10 +124,17 @@ export function ProjectScenesPage() {
         </TabsContent>
         <TabsContent value="video">
           {project.runStatus === "completed" && project.outputFile !== undefined ? (
+            // No `w-full`: a 9:16 (TikTok preset) render stretched to the container's full width
+            // (max-w-6xl) blows up to an enormous height, since only width was ever constrained.
+            // Capping height instead and letting width auto-follow the video's own intrinsic
+            // aspect ratio (same as a plain <img>) keeps both 16:9 and 9:16 renders a sane size.
+            // Left-aligned (no `mx-auto`), matching the title/tabs/scene grid above it — centering
+            // a narrow 9:16 box on its own read as "flying off to the middle" against an otherwise
+            // left-aligned page.
             <video
               controls
               aria-label={`Video đã dựng: ${project.title}`}
-              className="w-full rounded-md"
+              className="block max-h-[70vh] w-auto max-w-full rounded-md bg-black"
               src={`/api/projects/${project.id}/output`}
             />
           ) : (

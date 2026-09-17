@@ -9,6 +9,8 @@ import {
   type Project,
 } from "@flow-ex/shared-schemas";
 
+import { getProjectLogs } from "../lib/api-client";
+
 export type { LogPipelineEvent } from "@flow-ex/shared-schemas";
 
 /** Cap on accumulated log lines: a real run with several retries (30s/2m/5m backoff) can emit
@@ -31,10 +33,13 @@ function parseEvent<T>(schema: z.ZodType<T>, raw: string): T | undefined {
  * Subscribes to `GET /api/projects/:id/events` (SSE, ../../be/.claude/rules/api-design.md) for
  * the lifetime of `projectId`. Per ../.claude/rules/state-management.md, a `scene` event patches
  * the TanStack Query cache directly (`setQueryData`) instead of the page polling; a `log` event
- * is purely local UI state (an ephemeral diagnostic tail, not server state) fed to the Log tab.
- * Both event shapes are validated against `@flow-ex/shared-schemas`'s `pipelineEventSchema` (the
- * single BE/FE contract) rather than a hand-rolled type guard, and a malformed/unparseable frame
- * is dropped rather than thrown from inside the `EventSource` listener.
+ * is local UI state fed to the Log tab, seeded once from `GET /api/projects/:id/logs`'s history
+ * (the SSE stream only ever emits lines from the moment THIS client connects, so without the
+ * seed, reloading the page on an already-running or already-finished project showed an empty Log
+ * tab even though `logs/run-<runId>.ndjson` has the full history on disk). Both event shapes are
+ * validated against `@flow-ex/shared-schemas`'s `pipelineEventSchema` (the single BE/FE contract)
+ * rather than a hand-rolled type guard, and a malformed/unparseable frame is dropped rather than
+ * thrown from inside the `EventSource` listener.
  */
 export function useProjectEvents(projectId: string | undefined): { logLines: LogPipelineEvent[] } {
   const queryClient = useQueryClient();
@@ -45,6 +50,12 @@ export function useProjectEvents(projectId: string | undefined): { logLines: Log
       return;
     }
     setLogLines([]);
+    let cancelled = false;
+    void getProjectLogs(projectId)
+      .then((history) => {
+        if (!cancelled) setLogLines(history);
+      })
+      .catch(() => undefined); // history is a best-effort seed; SSE still works without it
     const source = new EventSource(`/api/projects/${projectId}/events`);
 
     source.addEventListener("scene", (event) => {
@@ -84,6 +95,7 @@ export function useProjectEvents(projectId: string | undefined): { logLines: Log
     });
 
     return () => {
+      cancelled = true;
       source.close();
     };
   }, [projectId, queryClient]);

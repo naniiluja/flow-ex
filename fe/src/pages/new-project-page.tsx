@@ -66,7 +66,7 @@ export function NewProjectPage() {
       : createProject.error?.message);
 
   return (
-    <main className="mx-auto max-w-2xl p-6">
+    <main className="w-full max-w-2xl mx-auto p-6">
       <Card>
         <CardHeader>
           <CardTitle>Dự án mới: dán kịch bản JSON</CardTitle>
