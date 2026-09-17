@@ -26,10 +26,11 @@ const SCRIPT_2_SCENES: ScriptInput = {
   voice: "hn_female_ngochuyen_full_48k-fhg",
   aspectRatio: "16:9",
   preset: "youtube",
+  references: [],
   reviewEnabled: false,
   scenes: [
-    { narration: "Xin chao", imagePrompt: "a sunny beach" },
-    { narration: "Tam biet", imagePrompt: "a quiet evening" },
+    { narration: "Xin chao", imagePrompt: "a sunny beach", referenceIds: [] },
+    { narration: "Tam biet", imagePrompt: "a quiet evening", referenceIds: [] },
   ],
 };
 
@@ -139,7 +140,7 @@ describe("createPipelineEngine", () => {
   it("emits a scene SSE event for every real status transition, in order (acceptance criterion 5)", async () => {
     const project = await store.create({
       ...SCRIPT_2_SCENES,
-      scenes: [SCRIPT_2_SCENES.scenes[0] ?? { narration: "x", imagePrompt: "y" }],
+      scenes: [SCRIPT_2_SCENES.scenes[0] ?? { narration: "x", imagePrompt: "y", referenceIds: [] }],
     });
     const generateImage = vi
       .fn<ImageProvider["generateImage"]>()
@@ -483,7 +484,7 @@ describe("createPipelineEngine", () => {
   it("marks the scene and the run failed when transcription itself fails, without touching the audio already generated", async () => {
     const project = await store.create({
       ...SCRIPT_2_SCENES,
-      scenes: [SCRIPT_2_SCENES.scenes[0] ?? { narration: "x", imagePrompt: "y" }],
+      scenes: [SCRIPT_2_SCENES.scenes[0] ?? { narration: "x", imagePrompt: "y", referenceIds: [] }],
     });
     const generateImage = vi
       .fn<ImageProvider["generateImage"]>()

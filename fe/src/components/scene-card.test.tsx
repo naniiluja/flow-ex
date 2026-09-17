@@ -9,6 +9,7 @@ function makeScene(overrides: Partial<ProjectScene> = {}): ProjectScene {
   return {
     narration: "Xin chao, day la loi thoai cua canh nay",
     imagePrompt: "beach",
+    referenceIds: [],
     status: "pending",
     attempts: 0,
     imageVariants: [],

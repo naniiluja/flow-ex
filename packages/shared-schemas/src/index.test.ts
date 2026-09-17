@@ -475,12 +475,19 @@ describe("scriptInputSchema references (task 013)", () => {
 });
 
 describe("projectSchema references (task 013)", () => {
-  it("parses a pre-task-013 project.json that has no references/referenceIds fields at all", async () => {
-    const { projectSchema } = await import("./index.ts");
+  // Written before this task merged with task 009's schemaVersion bump; a "no references field at
+  // all" project.json is now, by construction, a schemaVersion-1 file, and that shape only ever
+  // reaches `projectSchema` AFTER `migrateProjectJson` runs (project-store.ts's read path) — never
+  // parsed directly against the CURRENT schema. This test instead covers the case task 013
+  // actually needs: a schemaVersion-2 (post-009) project that predates task 013's `references`
+  // field, which must still default to [] rather than reject.
+  it("parses a schemaVersion-2 project.json that predates task 013's references field", async () => {
+    const { projectSchema, CURRENT_SCHEMA_VERSION } = await import("./index.ts");
     const legacyProject = {
       title: "Old project",
       voice: "hn_female_ngochuyen_full_48k-fhg",
       aspectRatio: "16:9",
+      preset: "youtube",
       reviewEnabled: false,
       scenes: [
         {
@@ -492,7 +499,7 @@ describe("projectSchema references (task 013)", () => {
         },
       ],
       id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       createdAt: new Date().toISOString(),
       runStatus: "idle",
     };

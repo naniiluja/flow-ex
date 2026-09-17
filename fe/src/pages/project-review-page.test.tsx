@@ -25,6 +25,7 @@ const AWAITING_REVIEW_SCENES: ProjectScene[] = [
   {
     narration: "Xin chao",
     imagePrompt: "beach",
+    referenceIds: [],
     status: "awaiting_review",
     attempts: 1,
     imageFile: "images/000.png",
@@ -35,6 +36,7 @@ const AWAITING_REVIEW_SCENES: ProjectScene[] = [
   {
     narration: "Tam biet",
     imagePrompt: "evening",
+    referenceIds: [],
     status: "awaiting_review",
     attempts: 1,
     imageFile: "images/001.png",
@@ -55,6 +57,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     schemaVersion: 2,
     createdAt: new Date().toISOString(),
     runStatus: "awaiting_review",
+    references: [],
     scenes: AWAITING_REVIEW_SCENES,
     ...overrides,
   };

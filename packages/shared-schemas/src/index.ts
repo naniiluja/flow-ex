@@ -162,8 +162,8 @@ function referenceIdsAreDeclared(input: {
 
 const REFERENCE_IDS_REFINEMENT = {
   message: "every scene.referenceIds entry must match a references[].id declared on the project",
-  path: ["scenes"],
-} as const;
+  path: ["scenes"] as PropertyKey[],
+};
 
 export const scriptInputSchema = withPresetInvariant(scriptInputObjectSchema).refine(
   referenceIdsAreDeclared,

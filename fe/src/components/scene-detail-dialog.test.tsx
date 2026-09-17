@@ -9,6 +9,7 @@ function makeScene(overrides: Partial<ProjectScene> = {}): ProjectScene {
   return {
     narration: "Xin chao",
     imagePrompt: "beach",
+    referenceIds: [],
     status: "awaiting_review",
     attempts: 1,
     imageFile: "images/000.png",

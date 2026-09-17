@@ -57,6 +57,7 @@ describe("NewProjectPage", () => {
       aspectRatio: "16:9",
       preset: "youtube",
       reviewEnabled: false,
+      references: [],
       schemaVersion: 2,
       createdAt: new Date().toISOString(),
       runStatus: "idle",
@@ -64,6 +65,7 @@ describe("NewProjectPage", () => {
         {
           narration: "Xin chao",
           imagePrompt: "beach",
+          referenceIds: [],
           status: "pending",
           attempts: 0,
           imageVariants: [],
@@ -88,6 +90,7 @@ describe("NewProjectPage", () => {
       aspectRatio: "16:9",
       preset: "youtube",
       reviewEnabled: false,
+      references: [],
       schemaVersion: 2,
       createdAt: new Date().toISOString(),
       runStatus: "idle",
@@ -95,6 +98,7 @@ describe("NewProjectPage", () => {
         {
           narration: "Xin chao",
           imagePrompt: "beach",
+          referenceIds: [],
           status: "pending",
           attempts: 0,
           imageVariants: [],

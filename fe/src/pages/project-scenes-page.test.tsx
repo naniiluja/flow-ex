@@ -41,8 +41,10 @@ function makeProject(
     schemaVersion: 2,
     createdAt: new Date().toISOString(),
     runStatus: "idle",
+    references: [],
     scenes: scenes.map(({ status, ...scene }) => ({
       ...scene,
+      referenceIds: [],
       status: status ?? "pending",
       attempts: 0,
       imageVariants: [],

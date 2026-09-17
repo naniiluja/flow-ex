@@ -19,12 +19,27 @@ function makeProject(): Project {
     aspectRatio: "16:9",
     preset: "youtube",
     reviewEnabled: false,
+    references: [],
     schemaVersion: 2,
     createdAt: new Date().toISOString(),
     runStatus: "running",
     scenes: [
-      { narration: "a", imagePrompt: "a", status: "pending", attempts: 0, imageVariants: [] },
-      { narration: "b", imagePrompt: "b", status: "pending", attempts: 0, imageVariants: [] },
+      {
+        narration: "a",
+        imagePrompt: "a",
+        referenceIds: [],
+        status: "pending",
+        attempts: 0,
+        imageVariants: [],
+      },
+      {
+        narration: "b",
+        imagePrompt: "b",
+        referenceIds: [],
+        status: "pending",
+        attempts: 0,
+        imageVariants: [],
+      },
     ],
   };
 }

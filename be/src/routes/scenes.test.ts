@@ -19,10 +19,11 @@ const SCRIPT: ScriptInput = {
   voice: "hn_female_ngochuyen_full_48k-fhg",
   aspectRatio: "16:9",
   preset: "youtube",
+  references: [],
   reviewEnabled: true,
   scenes: [
-    { narration: "Xin chao", imagePrompt: "a sunny beach" },
-    { narration: "Tam biet", imagePrompt: "a quiet evening" },
+    { narration: "Xin chao", imagePrompt: "a sunny beach", referenceIds: [] },
+    { narration: "Tam biet", imagePrompt: "a quiet evening", referenceIds: [] },
   ],
 };
 

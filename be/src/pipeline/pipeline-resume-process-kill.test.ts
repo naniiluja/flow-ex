@@ -17,11 +17,12 @@ const SCRIPT: ScriptInput = {
   voice: "hn_female_ngochuyen_full_48k-fhg",
   aspectRatio: "16:9",
   preset: "youtube",
+  references: [],
   reviewEnabled: false,
   scenes: [
-    { narration: "Scene mot", imagePrompt: "prompt 1" },
-    { narration: "Scene hai", imagePrompt: "prompt 2" },
-    { narration: "Scene ba", imagePrompt: "prompt 3" },
+    { narration: "Scene mot", imagePrompt: "prompt 1", referenceIds: [] },
+    { narration: "Scene hai", imagePrompt: "prompt 2", referenceIds: [] },
+    { narration: "Scene ba", imagePrompt: "prompt 3", referenceIds: [] },
   ],
 };
 
