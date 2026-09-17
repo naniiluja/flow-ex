@@ -100,3 +100,41 @@ describe("POST /api/projects + GET /api/projects/:id", () => {
     expect(errorBodySchema.parse(response.json()).error.code).toBe("INTERNAL_ERROR");
   });
 });
+
+describe("GET /api/projects", () => {
+  let root: string;
+  let app: ReturnType<typeof buildApp>;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "flow-ex-routes-list-"));
+    app = buildApp({ store: createProjectStore(root) });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("returns 200 with an empty list when no project exists", async () => {
+    const response = await app.inject({ method: "GET", url: "/api/projects" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ projects: [] });
+  });
+
+  it("returns a lightweight summary shape, never the heavy scenes[] array", async () => {
+    await app.inject({ method: "POST", url: "/api/projects", payload: validBody });
+
+    const response = await app.inject({ method: "GET", url: "/api/projects" });
+    expect(response.statusCode).toBe(200);
+    const body: { projects: Record<string, unknown>[] } = response.json();
+    expect(body.projects).toHaveLength(1);
+    const summary = body.projects[0];
+    expect(summary).not.toHaveProperty("scenes");
+    expect(summary).toMatchObject({
+      title: validBody.title,
+      runStatus: "idle",
+      sceneCount: 1,
+      doneSceneCount: 0,
+    });
+  });
+});

@@ -3,12 +3,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import PQueue from "p-queue";
+import pino, { type Logger } from "pino";
 import writeFileAtomic from "write-file-atomic";
 
 import {
   CURRENT_SCHEMA_VERSION,
   projectSchema,
   type Project,
+  type ProjectSummary,
   type ScriptInput,
 } from "@flow-ex/shared-schemas";
 
@@ -17,6 +19,10 @@ import { AppError } from "../domain/app-error.ts";
 export interface ProjectStore {
   create(input: ScriptInput): Promise<Project>;
   read(id: string): Promise<Project>;
+  /** Lightweight summary of every project on disk (dashboard/list pages), never the full
+   * `scenes[]` array. A folder missing/with a corrupt `project.json` is skipped, not thrown,
+   * but logged at `warn` (../../.claude/rules/error-handling.md's "no silent catch"). */
+  list(): Promise<ProjectSummary[]>;
   /** Atomically read-modify-write project.json: `mutate` receives the CURRENT on-disk project
    * and returns the next one, queued per-project (see ../../.claude/rules/data-layer.md) so two
    * concurrent scene-state writes never interleave. The result is validated against
@@ -29,7 +35,10 @@ export interface ProjectStore {
 }
 
 /** One project = one folder under projectsRoot, containing project.json (see ../../.claude/rules/data-layer.md). */
-export function createProjectStore(projectsRoot: string): ProjectStore {
+export function createProjectStore(
+  projectsRoot: string,
+  logger: Logger = pino({ level: "silent" }),
+): ProjectStore {
   const writeQueues = new Map<string, PQueue>();
 
   function queueFor(id: string): PQueue {
@@ -135,5 +144,48 @@ export function createProjectStore(projectsRoot: string): ProjectStore {
     });
   }
 
-  return { create, read: readFromDisk, update, projectsRoot };
+  async function list(): Promise<ProjectSummary[]> {
+    let entries: string[];
+    try {
+      entries = await fs.readdir(projectsRoot);
+    } catch (cause) {
+      const code = cause instanceof Error ? (cause as NodeJS.ErrnoException).code : undefined;
+      if (code === "ENOENT") {
+        return [];
+      }
+      throw new AppError({
+        code: "PROJECTS_LIST_FAILED",
+        errorKind: "transient",
+        message: "Failed to read projects root",
+        cause,
+        context: { projectsRoot },
+      });
+    }
+
+    const summaries: ProjectSummary[] = [];
+    for (const id of entries) {
+      let project: Project;
+      try {
+        project = await readFromDisk(id);
+      } catch (cause) {
+        logger.warn({ projectId: id, err: cause }, "project.list.skip");
+        continue;
+      }
+      summaries.push({
+        id: project.id,
+        title: project.title,
+        runStatus: project.runStatus,
+        createdAt: project.createdAt,
+        sceneCount: project.scenes.length,
+        doneSceneCount: project.scenes.filter((scene) => scene.status === "ready_for_render")
+          .length,
+        outputFile: project.outputFile,
+      });
+    }
+
+    summaries.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+    return summaries;
+  }
+
+  return { create, read: readFromDisk, list, update, projectsRoot };
 }

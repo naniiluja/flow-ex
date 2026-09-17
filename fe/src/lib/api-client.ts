@@ -1,4 +1,11 @@
-import { apiErrorBodySchema, type Project, projectSchema } from "@flow-ex/shared-schemas";
+import { z } from "zod";
+
+import {
+  apiErrorBodySchema,
+  type Project,
+  projectSchema,
+  projectSummarySchema,
+} from "@flow-ex/shared-schemas";
 
 export class ApiError extends Error {
   readonly code: string;
@@ -44,6 +51,18 @@ export async function createProject(input: unknown): Promise<Project> {
   }
 
   return projectSchema.parse(await response.json());
+}
+
+const listProjectsResponseSchema = z.object({ projects: z.array(projectSummarySchema) });
+
+export async function listProjects() {
+  const response = await fetch("/api/projects");
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+
+  return listProjectsResponseSchema.parse(await response.json()).projects;
 }
 
 export async function getProject(id: string): Promise<Project> {

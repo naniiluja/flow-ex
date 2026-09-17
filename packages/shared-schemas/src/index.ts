@@ -199,6 +199,24 @@ export const projectSchema = scriptInputSchema.extend({
 
 export type Project = z.infer<typeof projectSchema>;
 
+/** Lightweight dashboard/list-page projection of a `Project` (task 010): deliberately excludes
+ * `scenes[]` (and everything else the review/render UI needs but a list card does not), per
+ * `be/.claude/rules/api-design.md`'s `GET /api/projects` — a list of many projects must not pay
+ * the cost of every scene's full state. */
+export const projectSummarySchema = z
+  .object({
+    id: z.uuid(),
+    title: z.string(),
+    runStatus: runStatusSchema,
+    createdAt: z.iso.datetime(),
+    sceneCount: z.number().int().nonnegative(),
+    doneSceneCount: z.number().int().nonnegative(),
+    outputFile: z.string().optional(),
+  })
+  .strict();
+
+export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+
 /** SSE event contract for `GET /api/projects/:id/events` (be/.claude/rules/api-design.md), the
  * SINGLE definition both `be/src/pipeline/pipeline-events.ts` and
  * `fe/src/hooks/use-project-events.ts` validate against — a duplicated hand-rolled shape on
