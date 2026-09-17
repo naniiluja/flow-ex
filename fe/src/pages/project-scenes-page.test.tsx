@@ -165,7 +165,7 @@ describe("ProjectScenesPage", () => {
     expect(screen.queryByRole("link", { name: "Duyệt ảnh" })).not.toBeInTheDocument();
   });
 
-  it('shows "Đang tạo phụ đề" for a scene in the transcribing status (task 007)', async () => {
+  it('shows "Đang phiên âm" for a scene in the transcribing status (task 007)', async () => {
     const project = makeProject([
       { narration: "Xin chao", imagePrompt: "beach", status: "transcribing" },
     ]);
@@ -173,7 +173,7 @@ describe("ProjectScenesPage", () => {
 
     renderAt(project.id);
 
-    await waitFor(() => expect(screen.getByText("Đang tạo phụ đề")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Đang phiên âm")).toBeInTheDocument());
   });
 
   it('shows a playable <video> on the "Video" tab once the project has completed with an outputFile (regression: no route ever served output.mp4, so this tab had nothing to show)', async () => {

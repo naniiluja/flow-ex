@@ -4,6 +4,7 @@ import { projectAssetUrl } from "../lib/project-asset-url";
 import { AspectRatio } from "./ui/aspect-ratio";
 import { Badge } from "./ui/badge";
 import { Skeleton } from "./ui/skeleton";
+import { StatusBadge } from "./status-badge";
 
 export interface SceneCardProps {
   projectId: string;
@@ -14,22 +15,6 @@ export interface SceneCardProps {
   aspectRatio?: AspectRatioValue;
   onOpen: () => void;
 }
-
-// TEMPORARY (task 011): a simple status -> {label, badge variant} map, duplicated here on
-// purpose. Task 010 (parallel worktree) is adding a shared `status-badge.tsx`; merge should
-// replace this local map with that shared component rather than keep both.
-const STATUS_META: Record<
-  ProjectScene["status"],
-  { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
-> = {
-  pending: { label: "Chờ xử lý", variant: "outline" },
-  generating_image: { label: "Đang sinh ảnh", variant: "secondary" },
-  awaiting_review: { label: "Chờ duyệt", variant: "default" },
-  generating_audio: { label: "Đang sinh giọng đọc", variant: "secondary" },
-  transcribing: { label: "Đang tạo phụ đề", variant: "secondary" },
-  ready_for_render: { label: "Sẵn sàng dựng video", variant: "default" },
-  failed: { label: "Thất bại", variant: "destructive" },
-};
 
 const ASPECT_RATIO_TO_NUMBER: Record<AspectRatioValue, number> = {
   "16:9": 16 / 9,
@@ -46,7 +31,6 @@ export function SceneCard({
   aspectRatio = "16:9",
   onOpen,
 }: SceneCardProps) {
-  const statusMeta = STATUS_META[scene.status];
   const variantCount = scene.imageVariants.length;
 
   return (
@@ -80,7 +64,7 @@ export function SceneCard({
       <div className="flex flex-col gap-1.5 p-3">
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium">Cảnh {sceneIndex + 1}</span>
-          <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+          <StatusBadge status={scene.status} />
         </div>
         <p className="line-clamp-2 text-xs text-muted-foreground">{scene.narration}</p>
       </div>

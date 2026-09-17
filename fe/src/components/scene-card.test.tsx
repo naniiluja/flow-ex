@@ -20,13 +20,15 @@ function makeScene(overrides: Partial<ProjectScene> = {}): ProjectScene {
  * EP matrix over `ProjectScene["status"]` -> expected badge label (per
  * `../.claude/rules/testing.md`'s contract-level matrix requirement).
  */
+// Labels now come from the shared `StatusBadge` (task 010), merged in to replace this
+// component's own TEMPORARY status map (task 011).
 const STATUS_LABELS: [SceneStatus, string][] = [
   ["pending", "Chờ xử lý"],
-  ["generating_image", "Đang sinh ảnh"],
+  ["generating_image", "Đang tạo ảnh"],
   ["awaiting_review", "Chờ duyệt"],
-  ["generating_audio", "Đang sinh giọng đọc"],
-  ["transcribing", "Đang tạo phụ đề"],
-  ["ready_for_render", "Sẵn sàng dựng video"],
+  ["generating_audio", "Đang tạo giọng đọc"],
+  ["transcribing", "Đang phiên âm"],
+  ["ready_for_render", "Sẵn sàng render"],
   ["failed", "Thất bại"],
 ];
 
