@@ -7,7 +7,9 @@ import writeFileAtomic from "write-file-atomic";
 
 import {
   CURRENT_SCHEMA_VERSION,
+  migrateProjectJson,
   projectSchema,
+  scriptInputSchema,
   type Project,
   type ScriptInput,
 } from "@flow-ex/shared-schemas";
@@ -52,8 +54,15 @@ export function createProjectStore(projectsRoot: string): ProjectStore {
 
   async function create(input: ScriptInput): Promise<Project> {
     const id = randomUUID();
+    // Re-run through `scriptInputSchema` so `preset` is always resolved to a concrete value on
+    // the object actually persisted (task 009) — a caller that only set `aspectRatio` (or an
+    // older in-repo caller predating `preset`) must not write a project.json missing it, since
+    // that would make the freshly-created `Project` disagree with what a later `store.read()` of
+    // the SAME file returns (`readFromDisk` runs every read through `projectSchema`, which
+    // resolves `preset` the same way).
+    const resolvedInput = scriptInputSchema.parse(input);
     const project: Project = {
-      ...input,
+      ...resolvedInput,
       id,
       schemaVersion: CURRENT_SCHEMA_VERSION,
       createdAt: new Date().toISOString(),
@@ -111,7 +120,9 @@ export function createProjectStore(projectsRoot: string): ProjectStore {
       });
     }
 
-    const parsed = projectSchema.safeParse(json);
+    // Task 009 (data-layer.md): a version-1 project.json predates `preset` — migrate it lazily,
+    // on every read, BEFORE validating against the CURRENT schema.
+    const parsed = projectSchema.safeParse(migrateProjectJson(json));
     if (!parsed.success) {
       throw new AppError({
         code: "PROJECT_CORRUPT",

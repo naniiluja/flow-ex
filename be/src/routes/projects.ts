@@ -1,7 +1,11 @@
 import type { ZodTypeProvider } from "@fastify/type-provider-zod";
 import type { FastifyPluginCallback } from "fastify";
 
-import { projectIdParamsSchema, projectSchema, scriptInputSchema } from "@flow-ex/shared-schemas";
+import {
+  projectIdParamsSchema,
+  projectObjectSchema,
+  scriptInputSchema,
+} from "@flow-ex/shared-schemas";
 
 import type { ProjectStore } from "../store/project-store.ts";
 
@@ -18,7 +22,7 @@ const projectsRoutes: FastifyPluginCallback<ProjectsRouteOptions> = (fastify, op
     {
       schema: {
         body: scriptInputSchema,
-        response: { 201: projectSchema },
+        response: { 201: projectObjectSchema },
       },
     },
     async (request, reply) => {
@@ -33,7 +37,7 @@ const projectsRoutes: FastifyPluginCallback<ProjectsRouteOptions> = (fastify, op
     {
       schema: {
         params: projectIdParamsSchema,
-        response: { 200: projectSchema },
+        response: { 200: projectObjectSchema },
       },
     },
     async (request) => {

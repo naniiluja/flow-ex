@@ -55,8 +55,9 @@ describe("NewProjectPage", () => {
       title: "Cau chuyen mua he",
       voice: "hn_female_ngochuyen_full_48k-fhg",
       aspectRatio: "16:9",
+      preset: "youtube",
       reviewEnabled: false,
-      schemaVersion: 1,
+      schemaVersion: 2,
       createdAt: new Date().toISOString(),
       runStatus: "idle",
       scenes: [
@@ -77,6 +78,38 @@ describe("NewProjectPage", () => {
 
     await waitFor(() => expect(screen.getByText("PROJECT_PAGE")).toBeInTheDocument());
     expect(createSpy.mock.calls[0]?.[0]).toEqual(JSON.parse(validJson));
+  });
+
+  it("injects preset: 'youtube' into the payload when the picker is used (task 009)", async () => {
+    const project: Project = {
+      id: "44444444-4444-4444-4444-444444444444",
+      title: "Cau chuyen mua he",
+      voice: "hn_female_ngochuyen_full_48k-fhg",
+      aspectRatio: "16:9",
+      preset: "youtube",
+      reviewEnabled: false,
+      schemaVersion: 2,
+      createdAt: new Date().toISOString(),
+      runStatus: "idle",
+      scenes: [
+        {
+          narration: "Xin chao",
+          imagePrompt: "beach",
+          status: "pending",
+          attempts: 0,
+          imageVariants: [],
+        },
+      ],
+    };
+    const createSpy = vi.spyOn(apiClient, "createProject").mockResolvedValue(project);
+    renderPage();
+
+    fireEvent.click(screen.getByRole("radio", { name: /YouTube/ }));
+    fireEvent.change(getTextarea(), { target: { value: validJson } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo dự án" }));
+
+    await waitFor(() => expect(screen.getByText("PROJECT_PAGE")).toBeInTheDocument());
+    expect(createSpy.mock.calls[0]?.[0]).toEqual({ ...JSON.parse(validJson), preset: "youtube" });
   });
 
   it("shows the API error message when the server rejects the script", async () => {

@@ -40,10 +40,25 @@ describe("POST /api/projects + GET /api/projects/:id", () => {
     expect(response.statusCode).toBe(201);
 
     const body = projectSchema.parse(response.json());
-    expect(body.schemaVersion).toBe(1);
+    // Bumped 1 -> 2 in task 009 when `preset` was added (see @flow-ex/shared-schemas's
+    // CURRENT_SCHEMA_VERSION doc comment).
+    expect(body.schemaVersion).toBe(2);
 
     const onDisk = await fs.readFile(path.join(root, body.id, "project.json"), "utf8");
     expect(projectSchema.parse(JSON.parse(onDisk)).id).toBe(body.id);
+  });
+
+  it("creates a project from a body that carries preset instead of aspectRatio", async () => {
+    const withoutAspectRatio: Record<string, unknown> = { ...validBody };
+    delete withoutAspectRatio.aspectRatio;
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      payload: { ...withoutAspectRatio, preset: "youtube" },
+    });
+    expect(response.statusCode).toBe(201);
+    const body = projectSchema.parse(response.json());
+    expect(body.preset).toBe("youtube");
   });
 
   it("rejects an invalid body with 400 VALIDATION_ERROR", async () => {

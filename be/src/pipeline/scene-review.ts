@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 
-import type { Project, ProjectScene } from "@flow-ex/shared-schemas";
+import { resolveAspectRatio, type Project, type ProjectScene } from "@flow-ex/shared-schemas";
 
 import { AppError } from "../domain/app-error.ts";
 import type { ImageProvider } from "../domain/providers.ts";
@@ -106,7 +106,7 @@ export async function regenerateSceneReview(
     image = await imageProvider.generateImage(scene.imagePrompt, {
       projectId,
       sceneIndex,
-      aspectRatio: project.aspectRatio,
+      aspectRatio: resolveAspectRatio(project),
       logger,
     });
   } catch (error) {

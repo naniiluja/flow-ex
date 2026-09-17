@@ -4,8 +4,8 @@ import type { Logger } from "pino";
 
 import {
   approveSceneBodySchema,
+  projectObjectSchema,
   projectSceneParamsSchema,
-  projectSchema,
 } from "@flow-ex/shared-schemas";
 
 import type { ImageProvider } from "../domain/providers.ts";
@@ -39,7 +39,7 @@ const scenesRoutes: FastifyPluginCallback<ScenesRouteOptions> = (fastify, opts, 
       schema: {
         params: projectSceneParamsSchema,
         body: approveSceneBodySchema,
-        response: { 200: projectSchema },
+        response: { 200: projectObjectSchema },
       },
     },
     async (request) => {
@@ -65,7 +65,7 @@ const scenesRoutes: FastifyPluginCallback<ScenesRouteOptions> = (fastify, opts, 
 
   app.post(
     "/api/projects/:id/scenes/:index/regenerate",
-    { schema: { params: projectSceneParamsSchema, response: { 200: projectSchema } } },
+    { schema: { params: projectSceneParamsSchema, response: { 200: projectObjectSchema } } },
     async (request) => {
       const { id, index } = request.params;
       return regenerateSceneReview(

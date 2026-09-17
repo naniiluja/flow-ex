@@ -1,6 +1,21 @@
 import { z } from "zod";
 
-export const CURRENT_SCHEMA_VERSION = 1;
+import { inferPresetFromAspectRatio, presetSchema, type Preset } from "./presets.ts";
+
+export { PRESETS, presetSchema, resolveAspectRatio, resolveTtsSpeed } from "./presets.ts";
+export type {
+  CaptionStyleConfig,
+  DurationRangeSeconds,
+  Preset,
+  PresetConfig,
+  SceneCountRange,
+} from "./presets.ts";
+
+/** Bumped from 1 to 2 in task 009 when `preset` was added to `scriptInputSchema` (aspectRatio
+ * became optional, inferred from the preset when omitted). `migrateProjectJson` below is the
+ * lazy migration that lets a version-1 `project.json` (always had an explicit `aspectRatio`,
+ * never had `preset`) keep loading under the new schema. */
+export const CURRENT_SCHEMA_VERSION = 2;
 
 const BITRATES = [8, 16, 32, 64, 128] as const;
 const SAMPLE_RATES = [8000, 16000, 22050, 24000, 32000, 44100, 48000] as const;
@@ -63,11 +78,23 @@ export const sceneSchema = z
   })
   .strict();
 
-export const scriptInputSchema = z
+// Split into a plain ZodObject (`scriptInputObjectSchema`, still `.extend()`-able by
+// `projectSchema` below) and the public schema that also enforces/resolves the preset↔aspectRatio
+// invariant (`withPresetInvariant`) — a `.refine()`/`.transform()` chain returns a `ZodEffects`,
+// which has no `.extend()`, so `projectSchema` couldn't be built from the transformed schema
+// directly.
+export const scriptInputObjectSchema = z
   .object({
     title: z.string().trim().min(1),
     voice: z.string().trim().min(1),
-    aspectRatio: aspectRatioSchema,
+    // Task 009: `preset` drives the frame/caption/TTS-speed defaults (packages/shared-schemas/
+    // src/presets.ts). `aspectRatio` is now optional and, when omitted, is INFERRED from
+    // `preset`; when the caller writes it explicitly it WINS over the preset's own default (see
+    // ../../.claude/rules/video.md's "aspectRatio vs preset" note for this decision). At least
+    // one of the two must be present so a resolved aspect ratio always exists (enforced by
+    // `withPresetInvariant` below, not `.strict()` itself).
+    preset: presetSchema.optional(),
+    aspectRatio: aspectRatioSchema.optional(),
     tts: ttsOptionsSchema.optional(),
     // Task 006's "Dừng để duyệt" switch: an opt-in per run, decided at project creation and
     // persisted so a resumed run reads the SAME choice rather than re-asking (../../be/.claude
@@ -77,6 +104,27 @@ export const scriptInputSchema = z
     scenes: z.array(sceneSchema).min(1),
   })
   .strict();
+
+/** Requires at least one of `preset`/`aspectRatio`, then resolves `preset` to a concrete value
+ * (inferred from `aspectRatio` when the caller only set that one — the pre-task-009 behaviour).
+ * `aspectRatio` itself is left as given (or `undefined`); callers needing the final concrete
+ * aspect ratio call `resolveAspectRatio` (`./presets.ts`), which is where "explicit aspectRatio
+ * wins over preset" is actually applied. */
+function withPresetInvariant<Shape extends { preset?: Preset; aspectRatio?: AspectRatio }>(
+  schema: z.ZodType<Shape>,
+) {
+  return schema
+    .refine((value) => value.preset !== undefined || value.aspectRatio !== undefined, {
+      message: "at least one of preset or aspectRatio is required",
+      path: ["preset"],
+    })
+    .transform((value) => ({
+      ...value,
+      preset: value.preset ?? inferPresetFromAspectRatio(value.aspectRatio),
+    }));
+}
+
+export const scriptInputSchema = withPresetInvariant(scriptInputObjectSchema);
 
 export type ScriptInput = z.infer<typeof scriptInputSchema>;
 
@@ -187,7 +235,15 @@ export const projectSceneSchema = sceneSchema.extend({
 
 export type ProjectScene = z.infer<typeof projectSceneSchema>;
 
-export const projectSchema = scriptInputSchema.extend({
+// Same `ZodObject`/`withPresetInvariant` split as `scriptInputObjectSchema`/`scriptInputSchema`
+// above, for the SAME reason plus one more: `@fastify/type-provider-zod`'s response serializer
+// runs zod in "encode" mode, which throws `ZodEncodeError` on a `.transform()` (a "unidirectional"
+// transform, per zod 4's own terminology) — a route declaring `response: { 200: projectSchema }`
+// would 500 on every success response. `projectObjectSchema` (no `.refine()`/`.transform()`) is
+// what routes use for `response:`; `projectSchema` (the invariant-checked version) is for
+// validating/parsing a raw `project.json` (`be/src/store/project-store.ts`) or a test fixture,
+// where a plain `unknown` input might still be missing `preset`.
+export const projectObjectSchema = scriptInputObjectSchema.extend({
   id: z.uuid(),
   schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
   createdAt: z.iso.datetime(),
@@ -197,7 +253,32 @@ export const projectSchema = scriptInputSchema.extend({
   outputFile: z.string().optional(),
 });
 
+export const projectSchema = withPresetInvariant(projectObjectSchema);
+
 export type Project = z.infer<typeof projectSchema>;
+
+/** Lazy migration (../../be/.claude/rules/data-layer.md: "a version bump requires a one-time
+ * migration function run lazily on load"): a `project.json` written under `schemaVersion: 1`
+ * always had an explicit `aspectRatio` and never had `preset` (task 009 added both). Called by
+ * `be/src/store/project-store.ts` on every read, BEFORE `projectSchema.safeParse`, so an old file
+ * still validates against the current (v2) schema. A v2 (or already-migrated) object passes
+ * through unchanged. Not itself a zod schema — plain data massaging on the raw JSON, since the
+ * shape a v1 file actually has predates `projectSchema` entirely. */
+export function migrateProjectJson(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null) {
+    return raw;
+  }
+  const obj = raw as Record<string, unknown>;
+  if (obj.schemaVersion === 1 && obj.preset === undefined) {
+    const aspectRatio = obj.aspectRatio as AspectRatio | undefined;
+    return {
+      ...obj,
+      preset: inferPresetFromAspectRatio(aspectRatio),
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+    };
+  }
+  return obj;
+}
 
 /** SSE event contract for `GET /api/projects/:id/events` (be/.claude/rules/api-design.md), the
  * SINGLE definition both `be/src/pipeline/pipeline-events.ts` and

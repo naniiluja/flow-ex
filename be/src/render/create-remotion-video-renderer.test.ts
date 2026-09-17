@@ -15,6 +15,7 @@ function baseProject(captionsFile: string | undefined): Project {
     title: "t",
     voice: "v",
     aspectRatio: "16:9",
+    preset: "youtube",
     reviewEnabled: false,
     schemaVersion: CURRENT_SCHEMA_VERSION,
     createdAt: "2026-01-01T00:00:00.000Z",

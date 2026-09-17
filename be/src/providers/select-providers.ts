@@ -3,7 +3,7 @@ import path from "node:path";
 import type { WhisperModel } from "@remotion/install-whisper-cpp";
 import type { Logger } from "pino";
 
-import type { TtsOptions } from "@flow-ex/shared-schemas";
+import { resolveTtsSpeed, type Preset, type TtsOptions } from "@flow-ex/shared-schemas";
 
 import type { ImageProvider, TranscriptionProvider, TtsProvider } from "../domain/providers.ts";
 import { createFakeImageProvider } from "./fake/fake-image-provider.ts";
@@ -50,6 +50,19 @@ export function selectImageProvider(
     return createFlowImageProvider({ ...chromeOptions, assetsDir });
   }
   return createFakeImageProvider({ assetsDir });
+}
+
+/** Task 009: the project's own explicit `tts.speed` WINS; only an UNSET `speed` falls back to the
+ * project's preset default (`PRESETS[preset].ttsSpeed`, `@flow-ex/shared-schemas`'s
+ * `resolveTtsSpeed`) — same "explicit wins over preset" rule as `resolveAspectRatio`
+ * (../../.claude/rules/video.md). A pure function so `be/src/routes/render.ts` can stay a thin
+ * handler (../.claude/rules/backend-conventions.md) and this resolution is unit-testable on its
+ * own, without spinning up the whole app. */
+export function resolveTtsOptionsForProject(
+  preset: Preset,
+  ttsOptions: TtsOptions | undefined,
+): TtsOptions {
+  return { ...ttsOptions, speed: resolveTtsSpeed(preset, ttsOptions?.speed) };
 }
 
 /** Picks the real `VbeeTtsProvider` when credentials are configured, else `FakeTtsProvider` —

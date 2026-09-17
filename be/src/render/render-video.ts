@@ -30,6 +30,10 @@ function getBundleLocation(): Promise<string> {
 export interface RenderVideoOptions {
   scenes: MainCompositionProps["scenes"];
   aspectRatio: MainCompositionProps["aspectRatio"];
+  /** Task 009: drives caption style (font size/weight/padding/token-combine window) via
+   * `@flow-ex/shared-schemas`'s `PRESETS` table; defaults to "youtube" so a caller that still
+   * only passes `aspectRatio` (e.g. an older test) keeps rendering with a sane caption style. */
+  preset?: MainCompositionProps["preset"];
   outputLocation: string;
   /** Optional so this can be called from a plain script/test with no logger wired up yet
    * (task 003's pipeline will always pass one, with `projectId`/`runId` already on its child). */
@@ -41,6 +45,7 @@ export async function renderVideo(options: RenderVideoOptions): Promise<void> {
   const inputProps: MainCompositionProps = {
     scenes: options.scenes,
     aspectRatio: options.aspectRatio,
+    preset: options.preset ?? "youtube",
   };
   const logContext = { stage: "render", sceneCount: options.scenes.length };
   const startedAt = Date.now();

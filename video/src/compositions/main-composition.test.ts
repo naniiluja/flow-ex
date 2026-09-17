@@ -9,6 +9,38 @@ function scene(durationMs: number) {
 }
 
 /**
+ * Contract-level EP/BVA matrix for the preset -> dimensions rule (task 009).
+ *
+ * | preset      | aspectRatio given | Expected                    |
+ * | ----------- | ----------------- | --------------------------- |
+ * | "tiktok"    | none              | 1080x1920 (preset default)  |
+ * | "youtube"   | none              | 1920x1080 (preset default)  |
+ * | "tiktok"    | "16:9" (conflict) | 1920x1080 (aspectRatio wins) |
+ */
+describe("computeVideoMetadata preset -> dimensions (task 009)", () => {
+  it("tiktok preset alone resolves to 1080x1920", () => {
+    const props: MainCompositionProps = { scenes: [], preset: "tiktok" };
+    const metadata = computeVideoMetadata(props);
+    expect(metadata.width).toBe(1080);
+    expect(metadata.height).toBe(1920);
+  });
+
+  it("youtube preset alone resolves to 1920x1080", () => {
+    const props: MainCompositionProps = { scenes: [], preset: "youtube" };
+    const metadata = computeVideoMetadata(props);
+    expect(metadata.width).toBe(1920);
+    expect(metadata.height).toBe(1080);
+  });
+
+  it("an explicit aspectRatio WINS over a conflicting preset default", () => {
+    const props: MainCompositionProps = { scenes: [], preset: "tiktok", aspectRatio: "16:9" };
+    const metadata = computeVideoMetadata(props);
+    expect(metadata.width).toBe(1920);
+    expect(metadata.height).toBe(1080);
+  });
+});
+
+/**
  * Contract-level EP/BVA matrix for computeVideoMetadata(props).
  *
  * | scenes (class)         | aspectRatio | Expected                                          |
@@ -19,13 +51,17 @@ function scene(durationMs: number) {
  */
 describe("computeVideoMetadata", () => {
   it("returns at least 1 frame and 16:9 dimensions for an empty scene list", () => {
-    const props: MainCompositionProps = { scenes: [], aspectRatio: "16:9" };
+    const props: MainCompositionProps = { scenes: [], aspectRatio: "16:9", preset: "youtube" };
     const metadata = computeVideoMetadata(props);
     expect(metadata).toEqual({ width: 1920, height: 1080, fps: FPS, durationInFrames: 1 });
   });
 
   it("does not add or subtract any transition frames for a single scene", () => {
-    const props: MainCompositionProps = { scenes: [scene(2000)], aspectRatio: "16:9" };
+    const props: MainCompositionProps = {
+      scenes: [scene(2000)],
+      aspectRatio: "16:9",
+      preset: "youtube",
+    };
     const metadata = computeVideoMetadata(props);
     // The single (and only) scene gets 0 transition frames (sceneFramesForTimeline), and with 0
     // transitions between scenes there is nothing to subtract either.
@@ -36,6 +72,7 @@ describe("computeVideoMetadata", () => {
     const props: MainCompositionProps = {
       scenes: [scene(2000), scene(3000), scene(2500)],
       aspectRatio: "9:16",
+      preset: "tiktok",
     };
     const metadata = computeVideoMetadata(props);
     expect(metadata.width).toBe(1080);

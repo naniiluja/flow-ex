@@ -7,10 +7,37 @@ import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  resolveTtsOptionsForProject,
   selectImageProvider,
   selectTranscriptionProvider,
   selectTtsProvider,
 } from "./select-providers.ts";
+
+/**
+ * Contract-level EP/BVA matrix for resolveTtsOptionsForProject(preset, ttsOptions).
+ *
+ * | preset      | ttsOptions.speed | Expected speed |
+ * | ----------- | ---------------- | -------------- |
+ * | "tiktok"    | undefined        | 1.15 (preset default) |
+ * | "youtube"   | undefined        | 1.0 (preset default)  |
+ * | "tiktok"    | 0.8 (explicit)   | 0.8 (explicit wins)   |
+ */
+describe("resolveTtsOptionsForProject", () => {
+  it("falls back to the preset's own speed when the project sets none", () => {
+    expect(resolveTtsOptionsForProject("tiktok", undefined).speed).toBe(1.15);
+    expect(resolveTtsOptionsForProject("youtube", undefined).speed).toBe(1.0);
+  });
+
+  it("an explicit tts.speed WINS over the preset default", () => {
+    expect(resolveTtsOptionsForProject("tiktok", { speed: 0.8 }).speed).toBe(0.8);
+  });
+
+  it("keeps every other ttsOptions field untouched", () => {
+    const result = resolveTtsOptionsForProject("youtube", { bitrate: 64 });
+    expect(result.bitrate).toBe(64);
+    expect(result.speed).toBe(1.0);
+  });
+});
 
 const server = setupServer();
 beforeAll(() => {

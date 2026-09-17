@@ -17,8 +17,9 @@ function makeProject(): Project {
     title: "Du an test",
     voice: "v",
     aspectRatio: "16:9",
+    preset: "youtube",
     reviewEnabled: false,
-    schemaVersion: 1,
+    schemaVersion: 2,
     createdAt: new Date().toISOString(),
     runStatus: "running",
     scenes: [

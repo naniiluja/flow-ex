@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { captionsFileSchema, type Project } from "@flow-ex/shared-schemas";
+import { captionsFileSchema, resolveAspectRatio, type Project } from "@flow-ex/shared-schemas";
 
 import { AppError } from "../domain/app-error.ts";
 import type { VideoRenderer } from "../domain/providers.ts";
@@ -76,7 +76,12 @@ export function createRemotionVideoRenderer(options: RemotionVideoRendererOption
         }),
       );
 
-      await renderVideo({ aspectRatio: project.aspectRatio, outputLocation, scenes });
+      await renderVideo({
+        aspectRatio: resolveAspectRatio(project),
+        preset: project.preset,
+        outputLocation,
+        scenes,
+      });
     },
   };
 }

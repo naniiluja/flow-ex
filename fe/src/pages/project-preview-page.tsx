@@ -11,6 +11,7 @@ import {
 export function buildSamplePreviewProps(): MainCompositionProps {
   return {
     aspectRatio: "16:9",
+    preset: "youtube",
     scenes: SAMPLE_SCENE_FIXTURES.map((fixture) => ({
       imageUrl: `/api/samples/${fixture.filename}.png`,
       imageWidth: fixture.imageWidth,
