@@ -42,6 +42,16 @@ function caption(text: string, startMs: number, endMs: number): Caption {
   return { text, startMs, endMs, timestampMs: Math.round((startMs + endMs) / 2), confidence: 1 };
 }
 
+// Task 009's tiktok caption style, used to drive the tests below since `captionStyle` is now a
+// required prop (font size/weight/padding/combine-window come from the active preset, not a
+// hard-coded constant in the component itself).
+const TIKTOK_CAPTION_STYLE = {
+  fontSize: 96,
+  fontWeight: 800,
+  paddingBottomPercent: 30,
+  combineTokensWithinMs: 600,
+};
+
 beforeEach(() => {
   vi.resetModules();
   delayRenderMock.mockReset();
@@ -56,7 +66,15 @@ beforeEach(() => {
 
 describe("TikTokCaptions font loading", () => {
   it("delays the render for the font and continues it with the SAME handle once loaded", async () => {
-    await import("./tiktok-captions.tsx");
+    const { TikTokCaptions } = await import("./tiktok-captions.tsx");
+    const captions: Caption[] = [caption("Đêm", 0, 300)];
+
+    // `loadCaptionFont` now runs INSIDE the component (task 009: it needs the preset's own
+    // `captionStyle.fontWeight`), so rendering the component is what triggers `delayRender`,
+    // not merely importing the module.
+    ReactDOMServer.renderToStaticMarkup(
+      React.createElement(TikTokCaptions, { captions, captionStyle: TIKTOK_CAPTION_STYLE }),
+    );
 
     expect(delayRenderMock).toHaveBeenCalledTimes(1);
     const handle = delayRenderMock.mock.results[0]?.value as number;
@@ -75,7 +93,7 @@ describe("TikTokCaptions font loading", () => {
     const captions: Caption[] = [caption("Đêm", 0, 300), caption(" ấy", 300, 600)];
 
     const html = ReactDOMServer.renderToStaticMarkup(
-      React.createElement(TikTokCaptions, { captions }),
+      React.createElement(TikTokCaptions, { captions, captionStyle: TIKTOK_CAPTION_STYLE }),
     );
 
     expect(html).toContain("Đêm");
