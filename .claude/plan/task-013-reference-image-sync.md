@@ -1,6 +1,24 @@
 # Task 013 — Ảnh tham chiếu: nhân vật và bối cảnh đồng bộ
 
-**Trạng thái:** todo
+**Trạng thái:** in-review (phạm vi rút gọn có chủ đích, xem "Đã làm thực tế" bên dưới)
+
+## Đã làm thực tế (2026-09-17, Rem tự làm trực tiếp, không qua subagent)
+
+Khảo sát DOM thật xác nhận Flow có tính năng "Nhân vật"/"Cảnh" native (upload hoặc mô tả text, gắn
+vào prompt qua nút "+" → picker → "Thêm vào câu lệnh") — tốt hơn phương án "character bible" dự
+phòng ban đầu. Đã hoàn thành: schema (`referenceSchema`, `references[]`, `scene.referenceIds`, ràng
+buộc referenceIds phải trỏ tới reference đã khai báo), `ImageGenerationContext.referenceImageFiles`,
+`attachReferenceAssets()` trong `flow-automation.ts` + fixture Playwright thật + 3 test EP/BVA,
+`.claude/rules/image-prompting.md` mới, bổ sung `flow-automation.md`. 230/230 test be+shared-schemas
+xanh, lint sạch.
+
+**Cố ý CHƯA làm** (ghi làm "Known gap" trong `image-prompting.md`, giống convention `error-handling.md`):
+nối `attachReferenceAssets` vào `pipeline-engine.ts` (pha 0 gen reference trước vòng scene, gọi
+attach khi scene có `referenceIds`), và smoke test Flow thật đo mức đồng bộ nhân vật. Lý do: khối
+lượng còn lại (state machine mới + resume test + smoke thật) vượt ngân sách phiên hiện tại; làm ẩu
+phần này rủi ro hơn là để lại rõ ràng cho một task nối tiếp. Xem task 015 hoặc mở task 013b khi cần.
+
+---
 **Predecessor:** không (chạy song song, worktree riêng). Trước smoke test thật, tự mở Chrome vào Flow (xem mục "Chrome tự mở" trong bản kế hoạch).
 **Chi tiết đầy đủ:** xem "Task 013" trong `/Users/naniiluja/.claude/plans/t-i-mu-n-s-a-l-i-moonlit-giraffe.md`
 

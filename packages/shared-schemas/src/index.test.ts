@@ -320,3 +320,99 @@ describe("ttsOptionsSchema", () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe("scriptInputSchema references (task 013)", () => {
+  // EP/BVA matrix on the references[]/scene.referenceIds contract.
+  // | references     | scene.referenceIds        | Expected                              |
+  // | absent         | absent                    | success, both default to []           |
+  // | 1 valid entry  | [] (empty)                | success                               |
+  // | 1 valid entry  | [thatId]                  | success                               |
+  // | 1 valid entry  | ["unknown-id"]            | error: unknown reference id           |
+  // | []             | ["any-id"]                | error: unknown reference id           |
+  it("defaults references and referenceIds to [] when both are absent", () => {
+    const result = scriptInputSchema.safeParse(validScript);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.references).toEqual([]);
+      expect(result.data.scenes[0]?.referenceIds).toEqual([]);
+    }
+  });
+
+  const oneReference = [
+    {
+      id: "char-1",
+      kind: "character" as const,
+      name: "Cô bán cà phê",
+      prompt: "a warm, tired barista in her 50s, hà nội style",
+    },
+  ];
+
+  it("accepts a scene with an empty referenceIds even when references exist", () => {
+    const result = scriptInputSchema.safeParse({ ...validScript, references: oneReference });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a scene whose referenceIds points at a declared reference", () => {
+    const result = scriptInputSchema.safeParse({
+      ...validScript,
+      references: oneReference,
+      scenes: [{ ...validScript.scenes[0], referenceIds: ["char-1"] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a scene whose referenceIds points at an UNDECLARED reference", () => {
+    const result = scriptInputSchema.safeParse({
+      ...validScript,
+      references: oneReference,
+      scenes: [{ ...validScript.scenes[0], referenceIds: ["nonexistent"] }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a scene referenceId when the project has no references at all", () => {
+    const result = scriptInputSchema.safeParse({
+      ...validScript,
+      scenes: [{ ...validScript.scenes[0], referenceIds: ["any-id"] }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a reference with an unknown kind (not character/setting)", () => {
+    const result = scriptInputSchema.safeParse({
+      ...validScript,
+      references: [{ ...oneReference[0], kind: "prop" }],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("projectSchema references (task 013)", () => {
+  it("parses a pre-task-013 project.json that has no references/referenceIds fields at all", async () => {
+    const { projectSchema } = await import("./index.ts");
+    const legacyProject = {
+      title: "Old project",
+      voice: "hn_female_ngochuyen_full_48k-fhg",
+      aspectRatio: "16:9",
+      reviewEnabled: false,
+      scenes: [
+        {
+          narration: "Xin chao",
+          imagePrompt: "a sunny beach",
+          status: "pending",
+          attempts: 0,
+          imageVariants: [],
+        },
+      ],
+      id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      schemaVersion: 1,
+      createdAt: new Date().toISOString(),
+      runStatus: "idle",
+    };
+    const result = projectSchema.safeParse(legacyProject);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.references).toEqual([]);
+    }
+  });
+});

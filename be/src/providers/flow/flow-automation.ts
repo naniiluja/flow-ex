@@ -28,6 +28,17 @@ const ASPECT_RATIO_ICON: Record<AspectRatio, string> = {
   "9:16": "crop_9_16",
 };
 
+// Task 013, verified live 2026-09-17 against a real open project page: the "+" button next to the
+// prompt box opens an asset picker (search box + a list of the project's own generated assets)
+// whose "Thêm vào câu lệnh" button attaches the selected asset as an inline reference chip in the
+// SAME prompt box `typeIntoPromptBox` types into afterward. Bound by class, not `aria-label`, per
+// this file's own convention (../../.claude/rules/flow-automation.md).
+const ADD_REFERENCE_TRIGGER_SELECTOR = "button.add-menu-trigger";
+const ASSET_SEARCH_INPUT_SELECTOR = ".editable-text-input";
+const ASSET_ITEM_SELECTOR = ".asset-item";
+const ADD_TO_PROMPT_BUTTON_SELECTOR = "button.detail-add-to-prompt-btn";
+const REFERENCE_ATTACH_TIMEOUT_MS = 10_000;
+
 export interface GeneratedImageRef {
   src: string;
   uuid: string;
@@ -113,6 +124,43 @@ export async function typeIntoPromptBox(page: Page, prompt: string): Promise<voi
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.press("Delete");
   await editor.pressSequentially(prompt);
+}
+
+/** Attaches each of `referenceNames` (a project asset's exact display name, e.g. a Flow "Nhân
+ * vật"/"Cảnh" the reference phase already generated once) into the current prompt as an inline
+ * reference chip, so the scenes reusing it stay visually consistent with that same
+ * character/setting (task 013, ../../.claude/rules/flow-automation.md's reference-image section).
+ * Must run BEFORE `typeIntoPromptBox`, since attaching a reference does not itself touch
+ * `.ProseMirror`'s own text content — it only inserts the chip; the scene's own narration text is
+ * typed afterward. Reference names are matched by EXACT text within the picker's asset list, since
+ * the picker's search box filters by substring and this pipeline never has two references sharing
+ * a name (`referenceSchema.name` is set once per reference at project creation). */
+export async function attachReferenceAssets(
+  page: Page,
+  referenceNames: string[],
+  timeoutMs = REFERENCE_ATTACH_TIMEOUT_MS,
+): Promise<void> {
+  for (const referenceName of referenceNames) {
+    await page.locator(ADD_REFERENCE_TRIGGER_SELECTOR).first().click();
+    const searchInput = page.locator(ASSET_SEARCH_INPUT_SELECTOR).first();
+    await searchInput.waitFor({ state: "visible", timeout: timeoutMs });
+    await searchInput.fill(referenceName);
+    const item = page.locator(ASSET_ITEM_SELECTOR, { hasText: referenceName }).first();
+    const found = await item
+      .waitFor({ state: "visible", timeout: timeoutMs })
+      .then(() => true)
+      .catch(() => false);
+    if (!found) {
+      throw new AppError({
+        code: "FLOW_REFERENCE_ASSET_NOT_FOUND",
+        errorKind: "fatal",
+        message: `no Flow asset named "${referenceName}" was found in the "+" picker`,
+        context: { referenceName },
+      });
+    }
+    await item.click();
+    await page.locator(ADD_TO_PROMPT_BUTTON_SELECTOR).first().click();
+  }
 }
 
 function extractUuid(src: string): string | undefined {

@@ -17,6 +17,13 @@ export interface ImageGenerationContext {
    * run-log file or the SSE stream). `FlowImageProvider` uses it for `flow.image.generate`'s
    * entry/exit; a stateless provider like `FakeImageProvider` ignores it. */
   logger?: Logger;
+  /** Paths (relative to the project's assets folder) to already-generated reference images this
+   * scene should stay visually consistent with (task 013's `references[]`/`referenceIds`), e.g. a
+   * character or setting generated once via Flow's own "Nhân vật"/"Cảnh" asset picker
+   * (../../.claude/rules/flow-automation.md's reference-image section). Empty/undefined means the
+   * scene has no reference to attach; `FakeImageProvider` records it for test assertions but does
+   * not act on it. */
+  referenceImageFiles?: string[];
 }
 
 export interface GeneratedImage {

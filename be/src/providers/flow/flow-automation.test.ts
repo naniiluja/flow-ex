@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { AppError } from "../../domain/app-error.ts";
 import {
+  attachReferenceAssets,
   configureAspectRatioAndBatch,
   ensureAgentModeOff,
   ensureLoggedIn,
@@ -154,6 +155,48 @@ describe("flow-automation against the Flow fixture", () => {
     expect(await page.locator(".ProseMirror").textContent()).toBe("scene two prompt");
     const tileCount = await page.locator("flow-image-tile").count();
     expect(tileCount).toBe(2); // the stale tile from scene one is still in the DOM
+  });
+
+  // Task 013 EP/BVA matrix for attachReferenceAssets:
+  // | referenceNames         | Expected                                               |
+  // | ["Cô bán cà phê"]      | attaches once, prompt box untouched                    |
+  // | ["Cô bán cà phê"] x2   | attaches twice (two scenes reusing the same reference) |
+  // | ["Không tồn tại"]      | throws AppError FLOW_REFERENCE_ASSET_NOT_FOUND, fatal  |
+  it("attaches a known reference asset via the + picker", async () => {
+    await loadFixture();
+    await attachReferenceAssets(page, ["Cô bán cà phê"], SHORT_TIMEOUT_MS);
+    const attached = await page.evaluate(
+      () =>
+        (window as unknown as { __flowFixtureAttachedReferences: string[] })
+          .__flowFixtureAttachedReferences,
+    );
+    expect(attached).toEqual(["Cô bán cà phê"]);
+    // Attaching a reference must not itself type into the prompt editor.
+    expect(await page.locator(".ProseMirror").textContent()).toBe("");
+  });
+
+  it("attaches the same reference asset twice for two different scenes", async () => {
+    await loadFixture();
+    await attachReferenceAssets(page, ["Cô bán cà phê"], SHORT_TIMEOUT_MS);
+    await attachReferenceAssets(page, ["Cô bán cà phê"], SHORT_TIMEOUT_MS);
+    const attached = await page.evaluate(
+      () =>
+        (window as unknown as { __flowFixtureAttachedReferences: string[] })
+          .__flowFixtureAttachedReferences,
+    );
+    expect(attached).toEqual(["Cô bán cà phê", "Cô bán cà phê"]);
+  });
+
+  it("throws a fatal AppError when the reference asset does not exist in the picker", async () => {
+    await loadFixture();
+    await expect(
+      attachReferenceAssets(page, ["Không tồn tại"], SHORT_TIMEOUT_MS),
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof AppError &&
+        error.code === "FLOW_REFERENCE_ASSET_NOT_FOUND" &&
+        error.errorKind === "fatal",
+    );
   });
 });
 

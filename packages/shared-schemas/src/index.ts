@@ -56,14 +56,38 @@ export type TtsOptions = z.infer<typeof ttsOptionsSchema>;
 export const aspectRatioSchema = z.enum(["16:9", "9:16"]);
 export type AspectRatio = z.infer<typeof aspectRatioSchema>;
 
+/** A reusable character/setting reference (task 013), generated ONCE via Flow's native
+ * "Nhân vật"/"Cảnh" asset picker (be/.claude/rules/flow-automation.md's reference-image section)
+ * and then attached to any scene's prompt via `referenceIds` below, so the same face/place stays
+ * visually consistent across every scene that reuses it instead of Flow re-imagining it per call. */
+export const referenceSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    kind: z.enum(["character", "setting"]),
+    name: z.string().trim().min(1),
+    prompt: z.string().trim().min(1),
+  })
+  .strict();
+
+export type Reference = z.infer<typeof referenceSchema>;
+
 export const sceneSchema = z
   .object({
     narration: z.string().trim().min(1),
     imagePrompt: z.string().trim().min(1),
+    // Which project-level `references[].id` this scene's image should stay consistent with
+    // (task 013). Empty/absent means the scene has no reference to attach — unrelated to
+    // `.strict()`'s "no unknown fields" rule, this is a deliberately optional KNOWN field.
+    referenceIds: z.array(z.string().trim().min(1)).default([]),
   })
   .strict();
 
-export const scriptInputSchema = z
+/** Base object shape shared by `scriptInputSchema` and `projectSchema` (task 013): kept as a
+ * plain `ZodObject` (no `.refine()` yet) specifically so `projectSchema` below can still
+ * `.extend()` it with runtime-only fields — `.refine()` returns a `ZodEffects` wrapper that no
+ * longer exposes `.extend()`, so the cross-reference check is applied separately by each of the
+ * two schemas that need it, right after their own final shape is settled. */
+const scriptInputBaseSchema = z
   .object({
     title: z.string().trim().min(1),
     voice: z.string().trim().min(1),
@@ -74,9 +98,35 @@ export const scriptInputSchema = z
     // /rules/flow-automation.md's review-gate design). Defaults off so tasks 002-005's existing
     // fake-provider e2e flow keeps completing straight through, unchanged.
     reviewEnabled: z.boolean().default(false),
+    // Project-level character/setting bible (task 013); scenes opt in via `referenceIds`.
+    // Defaults to [] so every project created before task 013 still parses.
+    references: z.array(referenceSchema).default([]),
     scenes: z.array(sceneSchema).min(1),
   })
   .strict();
+
+/** Every `scene.referenceIds` entry must point at a `references[].id` declared on the SAME
+ * object — shared by `scriptInputSchema` and `projectSchema` so the check can't drift between
+ * the two call sites. */
+function referenceIdsAreDeclared(input: {
+  references: Reference[];
+  scenes: { referenceIds: string[] }[];
+}): boolean {
+  const knownIds = new Set(input.references.map((reference) => reference.id));
+  return input.scenes.every((scene) =>
+    scene.referenceIds.every((referenceId) => knownIds.has(referenceId)),
+  );
+}
+
+const REFERENCE_IDS_REFINEMENT = {
+  message: "every scene.referenceIds entry must match a references[].id declared on the project",
+  path: ["scenes"],
+} as const;
+
+export const scriptInputSchema = scriptInputBaseSchema.refine(
+  referenceIdsAreDeclared,
+  REFERENCE_IDS_REFINEMENT,
+);
 
 export type ScriptInput = z.infer<typeof scriptInputSchema>;
 
@@ -187,15 +237,27 @@ export const projectSceneSchema = sceneSchema.extend({
 
 export type ProjectScene = z.infer<typeof projectSceneSchema>;
 
-export const projectSchema = scriptInputSchema.extend({
-  id: z.uuid(),
-  schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
-  createdAt: z.iso.datetime(),
-  scenes: z.array(projectSceneSchema).min(1),
-  runId: z.uuid().optional(),
-  runStatus: runStatusSchema,
-  outputFile: z.string().optional(),
+/** A project-level reference as stored in project.json: the input reference plus the Flow-generated
+ * asset that backs it (task 013). `imageFile` is unset until the pipeline's reference phase (phase
+ * 0, before any scene's own image step) generates it once. */
+export const projectReferenceSchema = referenceSchema.extend({
+  imageFile: z.string().optional(),
 });
+
+export type ProjectReference = z.infer<typeof projectReferenceSchema>;
+
+export const projectSchema = scriptInputBaseSchema
+  .extend({
+    id: z.uuid(),
+    schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
+    createdAt: z.iso.datetime(),
+    references: z.array(projectReferenceSchema).default([]),
+    scenes: z.array(projectSceneSchema).min(1),
+    runId: z.uuid().optional(),
+    runStatus: runStatusSchema,
+    outputFile: z.string().optional(),
+  })
+  .refine(referenceIdsAreDeclared, REFERENCE_IDS_REFINEMENT);
 
 export type Project = z.infer<typeof projectSchema>;
 
