@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 
 import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
 import { path as ffprobePath } from "@ffprobe-installer/ffprobe";
+import type { Caption } from "@remotion/captions";
 // Deep-imported rather than from the `@flow-ex/video` barrel: the barrel also re-exports values
 // backed by `.tsx` files, and this file's import shape is the exact pattern that once broke a
 // real `node` runtime import elsewhere in `be/` (pass 2's FAIL). Vitest would transform either
@@ -194,5 +195,118 @@ describe("renderVideo (integration)", () => {
     const isNearBlack =
       pixelInTransition.r < 15 && pixelInTransition.g < 15 && pixelInTransition.b < 15;
     expect(isNearBlack).toBe(false);
+  }, 120_000);
+
+  /** Task 008 regression: `loadFont()`'s `waitUntilDone` promise used to be discarded, so SSR
+   * could render caption frames before the Vietnamese font finished loading, drawing double-stack
+   * diacritics (tầng đôi, e.g. "ế"/"ữ") wrong. This renders one real scene whose narration is a
+   * Vietnamese sentence FULL of double-stacked diacritics, with hand-authored word-level
+   * `captions` timing it (standing in for a real Whisper transcript — video.md's Captions section
+   * only requires word-level `{text, fromMs, toMs}` tokens, regardless of source), then samples
+   * REAL pixels (via ffmpeg, same technique as the transition check above) in the caption region
+   * to prove text was actually drawn: both the `#39e75f` active-word highlight color and plain
+   * white (an inactive word in the same page) must be present. A frame-count-only or
+   * output-reading test would not catch a font that failed to load, since the DOM would still
+   * render SOME glyph shape (the fallback font) without ever failing outright. */
+  it("draws Vietnamese double-stacked-diacritic captions with the highlight and white text colors", async () => {
+    const fixture = SAMPLE_SCENE_FIXTURES[0];
+    if (fixture === undefined) {
+      throw new Error("expected at least 1 sample scene fixture");
+    }
+
+    // "Đêm ấy trời rất lạnh, mẹ vẫn ngồi khâu" — every word here carries at least one
+    // double-stacked Vietnamese diacritic (ê+dấu, â+dấu, ơ/ậ...), spread across the fixture's
+    // 2000ms scene duration in fixed 250ms steps so the timing is fully deterministic.
+    const words = ["Đêm", "ấy", "trời", "rất", "lạnh,", "mẹ", "vẫn", "ngồi"];
+    const STEP_MS = 250;
+    const captions: Caption[] = words.map((word, index) => ({
+      text: index === 0 ? word : ` ${word}`,
+      startMs: index * STEP_MS,
+      endMs: (index + 1) * STEP_MS,
+      timestampMs: index * STEP_MS + STEP_MS / 2,
+      confidence: 1,
+    }));
+
+    const scenes: MainCompositionProps["scenes"] = [
+      {
+        imageUrl: `${baseUrl}/api/samples/${fixture.filename}.png`,
+        imageWidth: fixture.imageWidth,
+        imageHeight: fixture.imageHeight,
+        audioUrl: `${baseUrl}/api/samples/${fixture.filename}.wav`,
+        durationMs: fixture.durationMs,
+        captions,
+      },
+    ];
+
+    const outputLocation = path.join(outputDir, "captions-output.mp4");
+    await renderVideo({ scenes, aspectRatio: "16:9", outputLocation });
+
+    const stat = await fs.stat(outputLocation);
+    expect(stat.size).toBeGreaterThan(0);
+
+    // Mid-scene (1s into the 2s scene) lands inside token index 4 ("lạnh,", [1000,1250)ms),
+    // which `groupCaptionsForDisplay`'s own page-break rule (video.md's Captions section: a page
+    // breaks only once its span exceeds the 1200ms combine window AND the next token starts with
+    // a space) keeps on the SAME page as tokens 0-3 ("Đêm ấy trời rất") — so this one frame shows
+    // both the active (highlighted) word and several inactive (white) words together.
+    const midSceneSec = 1;
+
+    // Crop the whole caption region (bottom ~35%-95% of the frame, well inside the `paddingBottom:
+    // "10%"` text block) once and scan every pixel, rather than guessing one exact (x,y) — text
+    // layout/kerning is not something this test should have to predict pixel-for-pixel.
+    const REGION_X = 100;
+    const REGION_Y = 700;
+    const REGION_WIDTH = 1720;
+    const REGION_HEIGHT = 350;
+
+    const { stdout: regionBytes } = await execFileAsync(
+      ffmpegPath,
+      [
+        "-v",
+        "error",
+        "-ss",
+        String(midSceneSec),
+        "-i",
+        outputLocation,
+        "-vf",
+        `crop=${String(REGION_WIDTH)}:${String(REGION_HEIGHT)}:${String(REGION_X)}:${String(REGION_Y)}`,
+        "-vframes",
+        "1",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-",
+      ],
+      { encoding: "buffer", maxBuffer: 1024 * 1024 * 16 },
+    );
+
+    let hasHighlightPixel = false;
+    let hasWhitePixel = false;
+    const HIGHLIGHT = { r: 0x39, g: 0xe7, b: 0x5f };
+    const TOLERANCE = 30;
+
+    for (let offset = 0; offset + 2 < regionBytes.length; offset += 3) {
+      const r = defined(regionBytes[offset], "missing pixel byte");
+      const g = defined(regionBytes[offset + 1], "missing pixel byte");
+      const b = defined(regionBytes[offset + 2], "missing pixel byte");
+
+      if (
+        Math.abs(r - HIGHLIGHT.r) <= TOLERANCE &&
+        Math.abs(g - HIGHLIGHT.g) <= TOLERANCE &&
+        Math.abs(b - HIGHLIGHT.b) <= TOLERANCE
+      ) {
+        hasHighlightPixel = true;
+      }
+      if (r >= 220 && g >= 220 && b >= 220) {
+        hasWhitePixel = true;
+      }
+      if (hasHighlightPixel && hasWhitePixel) {
+        break;
+      }
+    }
+
+    expect(hasHighlightPixel).toBe(true);
+    expect(hasWhitePixel).toBe(true);
   }, 120_000);
 });
