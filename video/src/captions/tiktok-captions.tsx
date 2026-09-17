@@ -1,13 +1,17 @@
 import type { Caption } from "@remotion/captions";
-import { loadFont } from "@remotion/google-fonts/BeVietnamPro";
 import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 
 import { groupCaptionsForDisplay } from "./caption-tokenizer.ts";
+import { loadCaptionFont } from "./font.ts";
 
 // `subsets: ["vietnamese"]` (video.md's Captions rule) is what actually pulls in the diacritic
 // glyphs (ơ, ệ, ữ...) — the `latin`/`latin-ext` subsets this font also ships do not cover them.
-const { fontFamily } = loadFont("normal", { weights: ["700"], subsets: ["vietnamese"] });
+// `loadCaptionFont` (unlike a bare `loadFont()` call) registers a `delayRender()` handle and only
+// `continueRender()`s once the font's own `waitUntilDone()` resolves, so SSR can no longer render
+// a frame before the font is actually ready (this task's fix — the previous code discarded
+// `waitUntilDone` entirely).
+const { fontFamily } = loadCaptionFont({ weight: "800", subsets: ["vietnamese"] });
 
 const HIGHLIGHT_COLOR = "#39e75f";
 
@@ -48,10 +52,19 @@ export function TikTokCaptions({ captions }: TikTokCaptionsProps): React.ReactEl
         style={{
           fontFamily,
           fontSize: 64,
-          fontWeight: 700,
+          fontWeight: 800,
+          // Vietnamese double-stacked diacritics (ế, ữ, ệ...) stack a tone mark on top of a
+          // vowel modifier; the browser's default ~1.2 line-height clips the topmost mark. 1.35
+          // gives it enough vertical room without visibly increasing the gap between caption
+          // pages.
+          lineHeight: 1.35,
           color: "white",
           textAlign: "center",
-          WebkitTextStroke: "3px black",
+          // A thinner 2px stroke (down from 3px) plus a soft multi-layer shadow reads as a
+          // rounded outline instead of the harder, more bitmap-like edge a bare thick
+          // `WebkitTextStroke` produces around tight diacritic marks.
+          WebkitTextStroke: "2px black",
+          textShadow: "0 0 6px black, 0 0 3px black, 0 2px 4px black",
           paintOrder: "stroke fill",
           maxWidth: "85%",
         }}
