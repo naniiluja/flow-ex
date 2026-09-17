@@ -40,6 +40,10 @@ export interface BuildAppOptions {
    * `env.TRANSCRIBE_PROVIDER`. */
   transcriptionMode?: "fake" | "whisper";
   whisperOptions?: WhisperOptions;
+  /** Task 014: starting ceiling for concurrent image-step generation, threaded to
+   * `renderRoutes` -> `createPipelineEngine`. `server.ts` derives this from
+   * `env.FLOW_IMAGE_CONCURRENCY`. */
+  imageConcurrency?: number;
 }
 
 /** Explicit code -> HTTP status map (see ../.claude/rules/error-handling.md). Anything not
@@ -127,6 +131,7 @@ export function buildApp(options: BuildAppOptions) {
     getImageProvider,
     transcriptionMode: options.transcriptionMode,
     whisperOptions: options.whisperOptions,
+    imageConcurrency: options.imageConcurrency,
   });
   fastify.register(scenesRoutes, {
     store: options.store,

@@ -113,6 +113,12 @@
         // picks the NEW image, not a stale one still sitting in the DOM from a prior scene —
         // task 005's real bug (be/.claude/rules/flow-automation.md's "Stale-image guard").
         const uuid = `123e4567-e89b-12d3-a456-${String(window.__flowFixtureGenerationCount).padStart(12, "0")}`;
+        // Task 014: lets a test drive per-submit decode delays (e.g. to prove tile-index
+        // identification survives images finishing in a DIFFERENT order than they were
+        // submitted in), via `window.__flowFixtureDelaysMs[generationIndex]` set before the
+        // click. Falls back to the original fixed 150ms when unset.
+        const delayIndex = window.__flowFixtureGenerationCount - 1;
+        const delayMs = window.__flowFixtureDelaysMs?.[delayIndex] ?? 150;
         setTimeout(() => {
           tile.removeChild(pending);
           const img = document.createElement("img");
@@ -121,7 +127,7 @@
           Object.defineProperty(img, "naturalHeight", { value: 768 });
           Object.defineProperty(img, "complete", { value: true });
           tile.appendChild(img);
-        }, 150);
+        }, delayMs);
       });
     </script>
   </body>

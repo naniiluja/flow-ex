@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
+import PQueue from "p-queue";
 import type { Logger } from "pino";
 
 import type { Project, ProjectScene } from "@flow-ex/shared-schemas";
@@ -21,6 +22,12 @@ import { retryWithSchedule } from "./retry-with-schedule.ts";
 import { advanceScene, type SceneEvent } from "./scene-state-machine.ts";
 
 const DEFAULT_SCHEDULE_MS = [30_000, 120_000, 300_000] as const;
+const DEFAULT_IMAGE_CONCURRENCY = 3;
+// Task 014: after this many CONSECUTIVE image-step failures (across any scenes, reset on any
+// success), the queue's concurrency is lowered to 1 for the rest of the run — a Flow page that's
+// failing repeatedly under concurrent load (rate limiting, a UI state the concurrent submits
+// pushed it into) is more likely to recover single-threaded than to keep failing faster.
+const CONSECUTIVE_FAILURES_BEFORE_LOWERING_CONCURRENCY = 2;
 
 function defaultJitter(delayMs: number): number {
   return delayMs + Math.random() * delayMs * 0.1;
@@ -64,6 +71,10 @@ export interface PipelineEngineOptions {
   retryScheduleMs?: readonly number[];
   jitter?: (delayMs: number) => number;
   signal?: AbortSignal;
+  /** Task 014: how many scenes' image steps may run concurrently against the shared Flow page.
+   * Default 3 (`env.ts`'s `FLOW_IMAGE_CONCURRENCY`); the engine itself lowers this toward 1 at
+   * runtime on repeated consecutive failures (see `CONSECUTIVE_FAILURES_BEFORE_LOWERING_CONCURRENCY`). */
+  imageConcurrency?: number;
 }
 
 export interface PipelineEngine {
@@ -136,7 +147,14 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
     /** Runs one retryable generation step (image or audio) for `sceneIndex`: retries `task` per
      * the shared schedule, persists the result via `onSuccess`'s scene patch or a `failed`
      * status on exhaustion, and logs/emits either way. Shared by `runImageStep`/`runAudioStep`,
-     * which differ only in the 4 arguments below. */
+     * which differ only in the 4 arguments below.
+     *
+     * **Task 014 concurrency note:** every read used to decide what to persist or emit comes from
+     * INSIDE the `store.update` callback (`p`/`current`) or from that call's own LOCAL return
+     * value — never from the shared outer `project` variable, which another scene's task running
+     * concurrently can reassign at any `await` boundary. `project` is still updated as a
+     * best-effort convenience for code outside any concurrent phase, but nothing in this function
+     * trusts it for correctness. */
     async function executeStep<T>(
       sceneIndex: number,
       stage: "image" | "audio" | "captions",
@@ -153,7 +171,7 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
           },
           { scheduleMs, jitter, shouldRetry: isRetryableError, signal: options.signal },
         );
-        project = await options.store.update(projectId, (p) => {
+        const updated = await options.store.update(projectId, (p) => {
           const scenes = [...p.scenes];
           const current = requireScene(p, sceneIndex);
           scenes[sceneIndex] = {
@@ -164,14 +182,15 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
           };
           return { ...p, scenes };
         });
+        project = updated;
         logAndEmit(
           "info",
           { stage, sceneIndex, attempt: attempts },
           `pipeline.scene.${stage}.success`,
         );
-        emitSceneStatus(requireScene(project, sceneIndex), sceneIndex);
+        emitSceneStatus(requireScene(updated, sceneIndex), sceneIndex);
       } catch (error) {
-        project = await options.store.update(projectId, (p) => {
+        const updated = await options.store.update(projectId, (p) => {
           const scenes = [...p.scenes];
           const current = requireScene(p, sceneIndex);
           scenes[sceneIndex] = {
@@ -182,31 +201,37 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
           };
           return { ...p, scenes };
         });
+        project = updated;
         logAndEmit(
           "error",
           { stage, sceneIndex, attempt: attempts, err: toSceneError(error) },
           `pipeline.scene.${stage}.error`,
         );
-        emitSceneStatus(requireScene(project, sceneIndex), sceneIndex);
+        emitSceneStatus(requireScene(updated, sceneIndex), sceneIndex);
         throw error;
       }
     }
 
+    /** Task 014: this step now runs CONCURRENTLY across scenes (see the image phase in `run()`
+     * below), so every read here is either fresh from the store or the LOCAL return value of this
+     * task's own `store.update` call — never the shared outer `project` variable, which a
+     * DIFFERENT scene's concurrently-running task can reassign between any two `await`s in this
+     * function. */
     async function runImageStep(sceneIndex: number): Promise<void> {
-      let scene = requireScene(project, sceneIndex);
-      if (scene.status === "pending") {
-        const nextStatus = advanceScene(scene.status, "begin_image");
-        project = await options.store.update(projectId, (p) => {
-          const scenes = [...p.scenes];
-          scenes[sceneIndex] = { ...requireScene(p, sceneIndex), status: nextStatus };
-          return { ...p, scenes };
-        });
-        scene = requireScene(project, sceneIndex);
-        emitSceneStatus(scene, sceneIndex);
-      }
+      const beforeTransition = await options.store.update(projectId, (p) => {
+        const scenes = [...p.scenes];
+        const current = requireScene(p, sceneIndex);
+        if (current.status === "pending") {
+          scenes[sceneIndex] = { ...current, status: advanceScene(current.status, "begin_image") };
+        }
+        return { ...p, scenes };
+      });
+      project = beforeTransition;
+      const scene = requireScene(beforeTransition, sceneIndex);
       if (scene.status !== "generating_image") {
         return; // resumed past this step already (awaiting_review/generating_audio/ready_for_render)
       }
+      emitSceneStatus(scene, sceneIndex);
 
       await executeStep(
         sceneIndex,
@@ -214,15 +239,17 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
         {
           // Task 006: pause at `awaiting_review` instead of jumping straight to
           // `generating_audio` when the project's "Dừng để duyệt" switch is on
-          // (be/.claude/rules/flow-automation.md).
-          success: project.reviewEnabled ? "image_needs_review" : "image_succeeded",
+          // (be/.claude/rules/flow-automation.md). Read from THIS call's own fresh snapshot, not
+          // the shared outer `project`, since `reviewEnabled` is project-wide and stable, but the
+          // rule (debugging.md) is "never read the outer var" without exception.
+          success: beforeTransition.reviewEnabled ? "image_needs_review" : "image_succeeded",
           failure: "image_failed",
         },
         () =>
           options.imageProvider.generateImage(scene.imagePrompt, {
             projectId,
             sceneIndex,
-            aspectRatio: project.aspectRatio,
+            aspectRatio: beforeTransition.aspectRatio,
             logger: options.baseLogger.child({ projectId, runId, stage: "image" }),
           }),
         (image, current) => ({
@@ -238,7 +265,8 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
     }
 
     async function runAudioStep(sceneIndex: number): Promise<void> {
-      const scene = requireScene(project, sceneIndex);
+      const fresh = await options.store.read(projectId);
+      const scene = requireScene(fresh, sceneIndex);
       if (scene.status !== "generating_audio") {
         return; // resumed at/past this step (ready_for_render) or image step did not complete
       }
@@ -259,7 +287,7 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
           return options.ttsProvider.synthesize(current.narration, {
             projectId,
             sceneIndex,
-            voice: project.voice,
+            voice: fresh.voice,
             existingRequest,
             logger: options.baseLogger.child({ projectId, runId, stage: "audio" }),
             onRequestSubmitted: async (request) => {
@@ -321,35 +349,84 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
     project = await options.store.update(projectId, (p) => ({ ...p, runId, runStatus: "running" }));
     logAndEmit("info", { stage: "pipeline" }, "pipeline.run.start");
 
-    // Per scene: image then audio, exactly like before task 006 — each scene still pipelines
-    // through both steps back-to-back rather than waiting for every OTHER scene's image first
-    // (an earlier draft batched all images before any audio and broke this: see
-    // pipeline-resume-process-kill.test.ts, which relies on scene 0 reaching ready_for_render
-    // while scene 1's own image step is still in flight). Only the one line below is new: a scene
-    // that just paused at `awaiting_review` skips its audio step for THIS call, without blocking
-    // any other scene's own image+audio pipelining.
-    for (let sceneIndex = 0; sceneIndex < project.scenes.length; sceneIndex++) {
-      const scene = requireScene(project, sceneIndex);
+    const sceneIndices = project.scenes.map((_, index) => index);
 
+    for (const sceneIndex of sceneIndices) {
+      const scene = requireScene(project, sceneIndex);
       if (scene.status === "ready_for_render") {
         logAndEmit("info", { stage: "pipeline", sceneIndex }, "pipeline.scene.skip_already_done");
-        continue;
       }
       if (scene.status === "failed") {
+        // Matches the pre-014 behavior: a scene left `failed` from an exhausted retry schedule
+        // (or a `needs_user` error) blocks the WHOLE run until a manual retry from the UI
+        // (../../.claude/rules/error-handling.md's known gap) — checked up front, before any
+        // image work starts, since task 014 no longer processes scenes strictly one at a time.
         const error = sceneAlreadyFailedError(sceneIndex);
         await failRun(error);
         throw error;
       }
+    }
 
-      try {
-        await runImageStep(sceneIndex);
-      } catch (error) {
-        await failRun(error);
-        throw error;
-      }
+    // --- Phase 1: image generation, CONCURRENTLY across scenes (task 014) ---------------------
+    // Runs against the ONE shared Flow page (`../.claude/rules/flow-automation.md`'s connection
+    // reuse); `FlowImageProvider`'s own `SubmitMutex` (`submit-mutex.ts`) serializes only the
+    // shared-page-mutation part of each submission, so the ~25-30s decode wait overlaps for real.
+    // One scene's image failure does NOT abort the others: every OTHER already-queued scene still
+    // runs to completion, matching the "một job lỗi giữa chừng -> job khác vẫn hoàn thành" AC —
+    // the run is only marked failed (and thrown) once every scene's image attempt has settled.
+    const imageConcurrency = options.imageConcurrency ?? DEFAULT_IMAGE_CONCURRENCY;
+    const imageQueue = new PQueue({ concurrency: imageConcurrency });
+    let consecutiveImageFailures = 0;
+    let firstImageError: unknown;
 
-      if (requireScene(project, sceneIndex).status === "awaiting_review") {
-        continue; // task 006: paused for review, audio waits for the approve route
+    const imageSceneIndices = sceneIndices.filter((sceneIndex) => {
+      const status = requireScene(project, sceneIndex).status;
+      return status === "pending" || status === "generating_image";
+    });
+
+    await Promise.all(
+      imageSceneIndices.map((sceneIndex) =>
+        imageQueue.add(async () => {
+          if (options.signal?.aborted) {
+            return;
+          }
+          try {
+            await runImageStep(sceneIndex);
+            consecutiveImageFailures = 0;
+          } catch (error) {
+            consecutiveImageFailures += 1;
+            firstImageError ??= error;
+            if (consecutiveImageFailures >= CONSECUTIVE_FAILURES_BEFORE_LOWERING_CONCURRENCY) {
+              logAndEmit(
+                "warn",
+                { stage: "image" },
+                "pipeline.image_concurrency.lowered_to_1_after_consecutive_failures",
+              );
+              imageQueue.concurrency = 1;
+            }
+          }
+        }),
+      ),
+    );
+
+    if (firstImageError !== undefined) {
+      await failRun(firstImageError);
+      // `firstImageError` is `unknown` by construction (caught from an arbitrary provider); most
+      // real callers throw an `AppError`/`Error` (also what `toSceneError` already assumes
+      // elsewhere in this file), but the lint rule requires a proven `Error` at the throw site.
+      throw firstImageError instanceof Error
+        ? firstImageError
+        : new Error(toSceneError(firstImageError).message);
+    }
+
+    // --- Phase 2: audio + captions, sequentially per scene (Vbee is not a real bottleneck, task
+    // 014's own scope decision) — reads FRESH from the store per scene rather than the shared
+    // outer `project`, which the just-finished concurrent image phase may have reassigned out of
+    // this scene's own order.
+    for (const sceneIndex of sceneIndices) {
+      const scene = requireScene(await options.store.read(projectId), sceneIndex);
+      if (scene.status === "ready_for_render" || scene.status === "awaiting_review") {
+        continue; // already done, or paused for review (task 006: audio waits for the approve route)
       }
 
       try {
@@ -367,6 +444,7 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
       }
     }
 
+    project = await options.store.read(projectId);
     if (project.scenes.some((scene) => scene.status === "awaiting_review")) {
       logAndEmit("info", { stage: "pipeline" }, "pipeline.run.awaiting_review");
       project = await options.store.update(projectId, (p) => ({

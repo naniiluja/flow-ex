@@ -49,6 +49,15 @@ const envSchema = z.object({
   // Overrides where project.json files live; used by tests/local runs, not documented as a
   // user-facing knob because the default (repo-root `projects/`) is what the app ships with.
   PROJECTS_DIR: z.string().optional(),
+  // Task 014: how many scenes' image steps run CONCURRENTLY against the ONE shared Flow page
+  // (`../.claude/rules/flow-automation.md`'s "Tile identity" design). `pipeline-engine.ts` itself
+  // lowers this at runtime toward 1 on repeated consecutive failures; this value is only the
+  // STARTING ceiling for a fresh run.
+  FLOW_IMAGE_CONCURRENCY: z
+    .string()
+    .optional()
+    .transform((value) => (value ? Number(value) : 3))
+    .pipe(z.number().int().positive()),
 });
 
 export type Env = z.infer<typeof envSchema>;

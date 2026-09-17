@@ -79,17 +79,20 @@ describe("pipeline resume after a real process kill (SIGKILL)", () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it("does not redo scene 1 and resumes scene 2 from where a SIGKILL interrupted it", async () => {
+  it("does not redo scene 1's image and resumes scene 3 from where a SIGKILL interrupted it", async () => {
     const project = await store.create(SCRIPT);
 
-    // Scene 1 (index 0) has no delay and finishes almost immediately; scene 2 (index 1) is
-    // delayed 3s on its image step, opening a wide, reliable window to land the kill inside it.
+    // Task 014: image generation for all 3 scenes now runs CONCURRENTLY (default concurrency 3),
+    // so scene 1 (index 0, no delay) finishes its IMAGE step almost immediately while scene 2
+    // (index 1, delayed 3s) is still generating — but scene 1's AUDIO step no longer starts until
+    // the WHOLE image phase (every scene) has finished, so scene 1 sits at `generating_audio`
+    // rather than `ready_for_render` at the moment of the kill (a real, intentional behavior
+    // change from the old fully-sequential per-scene pipeline this test originally asserted).
     const firstRun = runCli(root, project.id, { 1: 3000 });
     const midFlightProject = await pollUntil(
       store,
       project.id,
-      (p) =>
-        p.scenes[0]?.status === "ready_for_render" && p.scenes[1]?.status === "generating_image",
+      (p) => p.scenes[0]?.imageFile !== undefined && p.scenes[1]?.status === "generating_image",
       15_000,
     );
     firstRun.kill("SIGKILL");
