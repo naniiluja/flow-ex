@@ -17,12 +17,13 @@ function makeProject(): Project {
     title: "Du an test",
     voice: "v",
     aspectRatio: "16:9",
+    reviewEnabled: false,
     schemaVersion: 1,
     createdAt: new Date().toISOString(),
     runStatus: "running",
     scenes: [
-      { narration: "a", imagePrompt: "a", status: "pending", attempts: 0 },
-      { narration: "b", imagePrompt: "b", status: "pending", attempts: 0 },
+      { narration: "a", imagePrompt: "a", status: "pending", attempts: 0, imageVariants: [] },
+      { narration: "b", imagePrompt: "b", status: "pending", attempts: 0, imageVariants: [] },
     ],
   };
 }

@@ -12,7 +12,14 @@ import assetsRoutes from "./routes/assets.ts";
 import eventsRoutes from "./routes/events.ts";
 import projectAssetsRoutes from "./routes/project-assets.ts";
 import projectsRoutes from "./routes/projects.ts";
-import renderRoutes, { type VbeeCredentials } from "./routes/render.ts";
+import {
+  createImageProviderFactory,
+  type FlowChromeOptions,
+  type VbeeCredentials,
+  type WhisperOptions,
+} from "./providers/select-providers.ts";
+import renderRoutes from "./routes/render.ts";
+import scenesRoutes from "./routes/scenes.ts";
 import type { ProjectStore } from "./store/project-store.ts";
 
 export interface BuildAppOptions {
@@ -24,6 +31,15 @@ export interface BuildAppOptions {
   /** Present -> real `VbeeTtsProvider`; absent -> `FakeTtsProvider` (task 003/004, see
    * `render.ts`). `server.ts` derives this from `env.VBEE_APP_ID`/`VBEE_TOKEN`. */
   vbeeCredentials?: VbeeCredentials;
+  /** `"real"` -> `FlowImageProvider` (task 005, needs `flowChromeOptions`); default/absent ->
+   * `FakeImageProvider` (task 003). `server.ts` derives this from `env.FLOW_IMAGE_PROVIDER`. */
+  flowImageProviderMode?: "fake" | "real";
+  flowChromeOptions?: FlowChromeOptions;
+  /** `"whisper"` -> `WhisperTranscriptionProvider` (task 007, needs `whisperOptions`);
+   * default/absent -> `FakeTranscriptionProvider`. `server.ts` derives this from
+   * `env.TRANSCRIBE_PROVIDER`. */
+  transcriptionMode?: "fake" | "whisper";
+  whisperOptions?: WhisperOptions;
 }
 
 /** Explicit code -> HTTP status map (see ../.claude/rules/error-handling.md). Anything not
@@ -32,6 +48,8 @@ export interface BuildAppOptions {
 const STATUS_BY_APP_ERROR_CODE: Record<string, number> = {
   PROJECT_NOT_FOUND: 404,
   ASSET_PATH_INVALID: 400,
+  SCENE_NOT_FOUND: 404,
+  SCENE_VARIANT_INVALID: 400,
 };
 
 function statusForAppError(error: AppError): number {
@@ -81,6 +99,14 @@ export function buildApp(options: BuildAppOptions) {
 
   const baseLogger = options.loggerInstance ?? pino({ level: "silent" });
   const eventBus = options.eventBus ?? createPipelineEventBus();
+  // One `ImageProvider` per project, shared between `renderRoutes` and `scenesRoutes`
+  // (../.claude/rules/architecture.md) — see `select-providers.ts`'s `createImageProviderFactory`
+  // doc comment for why a fresh instance per request would leak a CDP connection.
+  const getImageProvider = createImageProviderFactory(
+    options.flowImageProviderMode,
+    options.flowChromeOptions,
+    options.store.projectsRoot,
+  );
 
   fastify.register(projectsRoutes, { store: options.store });
   fastify.register(assetsRoutes);
@@ -90,6 +116,15 @@ export function buildApp(options: BuildAppOptions) {
     eventBus,
     baseLogger,
     vbeeCredentials: options.vbeeCredentials,
+    getImageProvider,
+    transcriptionMode: options.transcriptionMode,
+    whisperOptions: options.whisperOptions,
+  });
+  fastify.register(scenesRoutes, {
+    store: options.store,
+    baseLogger,
+    eventBus,
+    getImageProvider,
   });
   fastify.register(eventsRoutes, { eventBus });
 

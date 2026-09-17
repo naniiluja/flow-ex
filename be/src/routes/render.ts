@@ -4,23 +4,20 @@ import type { ZodTypeProvider } from "@fastify/type-provider-zod";
 import type { FastifyPluginCallback } from "fastify";
 import type { Logger } from "pino";
 
-import { projectIdParamsSchema, type TtsOptions } from "@flow-ex/shared-schemas";
+import { projectIdParamsSchema } from "@flow-ex/shared-schemas";
 
-import type { TtsProvider } from "../domain/providers.ts";
 import { AppError } from "../domain/app-error.ts";
+import type { ImageProvider } from "../domain/providers.ts";
 import { createPipelineEngine } from "../pipeline/pipeline-engine.ts";
 import type { PipelineEventBus } from "../pipeline/pipeline-events.ts";
-import { createFakeImageProvider } from "../providers/fake/fake-image-provider.ts";
-import { createFakeTtsProvider } from "../providers/fake/fake-tts-provider.ts";
-import { createVbeeTtsProvider } from "../providers/vbee/vbee-tts-provider.ts";
+import {
+  selectTranscriptionProvider,
+  selectTtsProvider,
+  type VbeeCredentials,
+  type WhisperOptions,
+} from "../providers/select-providers.ts";
 import { createRemotionVideoRenderer } from "../render/create-remotion-video-renderer.ts";
 import type { ProjectStore } from "../store/project-store.ts";
-
-export interface VbeeCredentials {
-  appId: string;
-  token: string;
-  webhookUrl: string;
-}
 
 export interface RenderRouteOptions {
   store: ProjectStore;
@@ -30,26 +27,24 @@ export interface RenderRouteOptions {
    * `VBEE_TOKEN` in the environment), falls back to `FakeTtsProvider` (task 003) so local dev and
    * the existing e2e test suite keep working without real credentials. */
   vbeeCredentials?: VbeeCredentials;
-}
-
-/** Picks the real `VbeeTtsProvider` when credentials are configured, else `FakeTtsProvider` —
- * pulled out of the route handler as its own pure function so the SELECTION itself is unit
- * testable without going through a real HTTP request or a real Chrome render. */
-export function selectTtsProvider(
-  vbeeCredentials: VbeeCredentials | undefined,
-  assetsDir: string,
-  logger?: Logger,
-  ttsOptions?: TtsOptions,
-): TtsProvider {
-  return vbeeCredentials
-    ? createVbeeTtsProvider({ ...vbeeCredentials, assetsDir, logger, ttsOptions })
-    : createFakeTtsProvider({ assetsDir });
+  /** One `ImageProvider` per project, shared with `routes/scenes.ts`'s regenerate route
+   * (../.claude/rules/architecture.md, `../providers/select-providers.ts`'s
+   * `createImageProviderFactory` doc comment explains why a single long-lived instance per
+   * project matters for `FlowImageProvider`). */
+  getImageProvider: (projectId: string) => ImageProvider;
+  /** `"whisper"` -> `WhisperTranscriptionProvider` (task 007, needs `whisperOptions`);
+   * default/absent -> `FakeTranscriptionProvider`. `server.ts` derives this from
+   * `env.TRANSCRIBE_PROVIDER`. Unlike `getImageProvider`, this is built fresh per request
+   * (no per-project caching needed): `WhisperTranscriptionProvider` holds no persistent
+   * connection to leak, only a lazily-shared install/model-download promise. */
+  transcriptionMode?: "fake" | "whisper";
+  whisperOptions?: WhisperOptions;
 }
 
 /** Starts a project's pipeline run in the background; progress is observed over SSE
  * (`GET /api/projects/:id/events`, ../.claude/rules/api-design.md), not this response. Wires
- * `FakeImageProvider` (replaced by `FlowImageProvider` in task 005) and either `VbeeTtsProvider`
- * or `FakeTtsProvider` depending on `vbeeCredentials`
+ * either `FlowImageProvider` or `FakeImageProvider` depending on `flowImageProviderMode` (task
+ * 005), and either `VbeeTtsProvider` or `FakeTtsProvider` depending on `vbeeCredentials`
  * (../../.claude/rules/architecture.md provider/strategy pattern). */
 const renderRoutes: FastifyPluginCallback<RenderRouteOptions> = (fastify, opts, done) => {
   const app = fastify.withTypeProvider<ZodTypeProvider>();
@@ -82,14 +77,23 @@ const renderRoutes: FastifyPluginCallback<RenderRouteOptions> = (fastify, opts, 
       const assetsDir = path.join(opts.store.projectsRoot, id, "assets");
       const engine = createPipelineEngine({
         store: opts.store,
-        imageProvider: createFakeImageProvider({ assetsDir }),
+        imageProvider: opts.getImageProvider(id),
         ttsProvider: selectTtsProvider(
           opts.vbeeCredentials,
           assetsDir,
           opts.baseLogger,
           project.tts,
         ),
-        videoRenderer: createRemotionVideoRenderer({ buildAssetUrl }),
+        transcriptionProvider: selectTranscriptionProvider(
+          opts.transcriptionMode,
+          opts.whisperOptions,
+          assetsDir,
+          opts.baseLogger,
+        ),
+        videoRenderer: createRemotionVideoRenderer({
+          buildAssetUrl,
+          projectsRoot: opts.store.projectsRoot,
+        }),
         baseLogger: opts.baseLogger,
         eventBus: opts.eventBus,
       });

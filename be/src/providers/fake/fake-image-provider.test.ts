@@ -33,6 +33,7 @@ describe("createFakeImageProvider", () => {
     const result = await provider.generateImage("a sunny beach", {
       projectId: "p1",
       sceneIndex: 0,
+      aspectRatio: "16:9",
     });
 
     expect(result.width).toBeGreaterThan(0);
@@ -47,7 +48,7 @@ describe("createFakeImageProvider", () => {
       assetsDir,
       transientFailuresBeforeSuccess: { 0: 2 },
     });
-    const context = { projectId: "p1", sceneIndex: 0 };
+    const context = { projectId: "p1", sceneIndex: 0, aspectRatio: "16:9" as const };
 
     await expect(provider.generateImage("prompt", context)).rejects.toSatisfy(
       (error: unknown) => error instanceof AppError && error.errorKind === "transient",
@@ -66,11 +67,15 @@ describe("createFakeImageProvider", () => {
     });
 
     await expect(
-      provider.generateImage("prompt", { projectId: "p1", sceneIndex: 0 }),
+      provider.generateImage("prompt", { projectId: "p1", sceneIndex: 0, aspectRatio: "16:9" }),
     ).rejects.toThrow();
     // Scene 1 has no configured failures, so it succeeds on the first call even though scene 0
     // just failed once.
-    const result = await provider.generateImage("prompt", { projectId: "p1", sceneIndex: 1 });
+    const result = await provider.generateImage("prompt", {
+      projectId: "p1",
+      sceneIndex: 1,
+      aspectRatio: "16:9",
+    });
     expect(result.width).toBeGreaterThan(0);
   });
 
@@ -82,11 +87,11 @@ describe("createFakeImageProvider", () => {
     });
     const provider = createFakeImageProvider({ assetsDir, alwaysFail: { 0: configuredError } });
 
-    await expect(provider.generateImage("prompt", { projectId: "p1", sceneIndex: 0 })).rejects.toBe(
-      configuredError,
-    );
-    await expect(provider.generateImage("prompt", { projectId: "p1", sceneIndex: 0 })).rejects.toBe(
-      configuredError,
-    );
+    await expect(
+      provider.generateImage("prompt", { projectId: "p1", sceneIndex: 0, aspectRatio: "16:9" }),
+    ).rejects.toBe(configuredError);
+    await expect(
+      provider.generateImage("prompt", { projectId: "p1", sceneIndex: 0, aspectRatio: "16:9" }),
+    ).rejects.toBe(configuredError);
   });
 });

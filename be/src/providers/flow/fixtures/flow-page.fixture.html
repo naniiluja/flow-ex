@@ -1,0 +1,128 @@
+<!doctype html>
+<!--
+  Hand-authored fixture reproducing the DOM structure verified live against
+  https://flow.google.com/project/<uuid> via a real Chrome CDP session on 2026-09-17 (task 005) —
+  NOT a scrape of the real page, which would embed the account's own session/PII data unsafe to
+  commit to a public repo. Every selector below is copied verbatim from that live verification
+  (../../.claude/rules/flow-automation.md); the inline script simulates just enough real DOM
+  behavior (focus, input events, the pending-tile -> <img> transition) for
+  `flow-automation.test.ts` and `preflight.test.ts` to drive the SAME Playwright calls
+  `flow-automation.ts`/`preflight.ts` use against the real page.
+
+  Real smoke-run finding (2026-09-17, task 005): Flow swaps the ENTIRE wrapping custom element
+  around `.ProseMirror` based on the agent-mode chip's own state — `flow-creative-agent-prompt-
+  box` while agent mode is ON, `flow-prompt-box` (used in this fixture, matching agent mode OFF
+  by default) once it's OFF. `flow-automation.ts`'s `PROMPT_EDITOR_SELECTOR` therefore does NOT
+  scope to either outer tag, only to `.ProseMirror` itself (confirmed unique on the real page in
+  BOTH states) — an earlier pass of this file scoped it to one specific tag name and broke the
+  moment the OTHER state was active.
+
+  A separate finding the same day: `settings-trigger-button` genuinely renders `hidden` (this
+  fixture simulates that) whenever the agent-mode chip is `aria-pressed="true"`, and only
+  becomes visible/clickable once agent mode is off. `agent-mode-chip`/`settings-trigger-button`
+  are otherwise UNCHANGED from the original, non-live 2026-09-16 survey.
+-->
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <title>Flow fixture</title>
+  </head>
+  <body>
+    <flow-prompt-box>
+      <flow-base-prompt-box>
+        <flow-rich-text-editor>
+          <div class="ProseMirror" contenteditable="true"></div>
+        </flow-rich-text-editor>
+        <button class="agent-mode-chip" type="button" aria-pressed="false">Tác nhân</button>
+        <button
+          class="settings-trigger-button"
+          type="button"
+          aria-label="Điều kiện kích hoạt cài đặt"
+        >
+          Cài đặt
+        </button>
+        <button
+          class="generate-icon-button"
+          type="submit"
+          aria-label="Bắt đầu tạo"
+          disabled
+        ></button>
+      </flow-base-prompt-box>
+    </flow-prompt-box>
+
+    <div id="settings-overlay" hidden>
+      <mat-button-toggle-group data-group="ratio">
+        <mat-button-toggle><mat-icon>crop_16_9</mat-icon>16:9</mat-button-toggle>
+        <mat-button-toggle><mat-icon>crop_9_16</mat-icon>9:16</mat-button-toggle>
+      </mat-button-toggle-group>
+      <mat-button-toggle-group data-group="batch">
+        <mat-button-toggle>x1</mat-button-toggle>
+        <mat-button-toggle>x2</mat-button-toggle>
+      </mat-button-toggle-group>
+    </div>
+
+    <div id="tiles"></div>
+
+    <script>
+      const editor = document.querySelector(".ProseMirror");
+      const generateButton = document.querySelector(".generate-icon-button");
+      const settingsButton = document.querySelector(".settings-trigger-button");
+      const agentChip = document.querySelector(".agent-mode-chip");
+      const overlay = document.getElementById("settings-overlay");
+      const tiles = document.getElementById("tiles");
+
+      function syncSettingsVisibility() {
+        // Real Flow behavior verified live 2026-09-17: the settings trigger is only visible
+        // (and clickable) once agent mode is OFF.
+        settingsButton.hidden = agentChip.getAttribute("aria-pressed") === "true";
+      }
+      syncSettingsVisibility();
+
+      editor.addEventListener("input", () => {
+        generateButton.disabled = editor.textContent.trim().length === 0;
+      });
+
+      agentChip.addEventListener("click", () => {
+        const next = agentChip.getAttribute("aria-pressed") === "true" ? "false" : "true";
+        agentChip.setAttribute("aria-pressed", next);
+        syncSettingsVisibility();
+      });
+
+      settingsButton.addEventListener("click", () => {
+        overlay.hidden = !overlay.hidden;
+      });
+      document.body.addEventListener("click", (event) => {
+        if (event.target === document.body) overlay.hidden = true;
+      });
+      for (const toggle of overlay.querySelectorAll("mat-button-toggle")) {
+        toggle.addEventListener("click", () => {
+          toggle.classList.add("selected");
+        });
+      }
+
+      generateButton.addEventListener("click", () => {
+        if (generateButton.disabled) return;
+        const tile = document.createElement("flow-image-tile");
+        const pending = document.createElement("flow-pending-tile");
+        pending.textContent = "image 40%";
+        tile.appendChild(pending);
+        tiles.appendChild(tile);
+        window.__flowFixtureGenerationCount = (window.__flowFixtureGenerationCount || 0) + 1;
+        // Each generation gets a DIFFERENT uuid (padded from the running counter), so a test
+        // driving two consecutive submits on the SAME page can prove `submitAndWaitForImage`
+        // picks the NEW image, not a stale one still sitting in the DOM from a prior scene —
+        // task 005's real bug (be/.claude/rules/flow-automation.md's "Stale-image guard").
+        const uuid = `123e4567-e89b-12d3-a456-${String(window.__flowFixtureGenerationCount).padStart(12, "0")}`;
+        setTimeout(() => {
+          tile.removeChild(pending);
+          const img = document.createElement("img");
+          img.src = `https://flow-content.google.test/image/${uuid}?sig=fake`;
+          Object.defineProperty(img, "naturalWidth", { value: 1376 });
+          Object.defineProperty(img, "naturalHeight", { value: 768 });
+          Object.defineProperty(img, "complete", { value: true });
+          tile.appendChild(img);
+        }, 150);
+      });
+    </script>
+  </body>
+</html>

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { scriptInputSchema, ttsOptionsSchema } from "./index.ts";
+import {
+  approveSceneBodySchema,
+  captionSchema,
+  captionsFileSchema,
+  projectSceneParamsSchema,
+  projectSceneSchema,
+  scriptInputSchema,
+  ttsOptionsSchema,
+} from "./index.ts";
 
 const validScript = {
   title: "Cau chuyen mua he",
@@ -65,6 +73,178 @@ describe("scriptInputSchema", () => {
     if (result.success) {
       expect(result.data.tts).toBeUndefined();
     }
+  });
+
+  it("defaults reviewEnabled to false when omitted (task 006)", () => {
+    const result = scriptInputSchema.safeParse(validScript);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.reviewEnabled).toBe(false);
+    }
+  });
+
+  it("accepts an explicit reviewEnabled: true", () => {
+    const result = scriptInputSchema.safeParse({ ...validScript, reviewEnabled: true });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.reviewEnabled).toBe(true);
+    }
+  });
+});
+
+describe("projectSceneSchema (task 006 review-gate fields)", () => {
+  const baseScene = {
+    narration: "Xin chao",
+    imagePrompt: "a sunny beach",
+    status: "awaiting_review" as const,
+    attempts: 1,
+  };
+
+  it("accepts the new awaiting_review status", () => {
+    expect(projectSceneSchema.safeParse(baseScene).success).toBe(true);
+  });
+
+  it("defaults imageVariants to [] when omitted (loading a pre-task-006 project.json)", () => {
+    const result = projectSceneSchema.safeParse(baseScene);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.imageVariants).toEqual([]);
+    }
+  });
+
+  it("accepts a populated imageVariants list", () => {
+    const result = projectSceneSchema.safeParse({
+      ...baseScene,
+      imageVariants: [{ file: "a.png", width: 1376, height: 768 }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an imageVariants entry missing width (strict per-variant shape)", () => {
+    const result = projectSceneSchema.safeParse({
+      ...baseScene,
+      imageVariants: [{ file: "a.png", height: 768 }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts the new transcribing status (task 007)", () => {
+    const result = projectSceneSchema.safeParse({ ...baseScene, status: "transcribing" });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts an optional captionsFile path", () => {
+    const result = projectSceneSchema.safeParse({
+      ...baseScene,
+      captionsFile: "captions/000.json",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("omits captionsFile when not yet transcribed", () => {
+    const result = projectSceneSchema.safeParse(baseScene);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.captionsFile).toBeUndefined();
+    }
+  });
+});
+
+/**
+ * Contract-level EP/BVA matrix for captionSchema/captionsFileSchema (task 007).
+ *
+ * | text        | timestampMs / confidence | extra field | Expected                 |
+ * | ----------- | ------------------------ | ----------- | ------------------------- |
+ * | "William"   | number / number          | none        | success                   |
+ * | " a" (1 char, leading space) | null / null | none | success                   |
+ * | very long string (10000 chars) | 0 / 0     | none        | success                   |
+ * | ""  (empty text)               | 0 / 0     | none        | success (empty is valid text) |
+ * | valid caption                  | valid     | unknown key | error: strict, unknown key |
+ * | array of 0 captions             | —         | —           | success (empty file valid) |
+ */
+describe("captionSchema / captionsFileSchema", () => {
+  const baseCaption = {
+    text: "William",
+    startMs: 40,
+    endMs: 420,
+    timestampMs: 230,
+    confidence: 0.81,
+  };
+
+  it("accepts a normal token", () => {
+    expect(captionSchema.safeParse(baseCaption).success).toBe(true);
+  });
+
+  it("accepts a 1-character token with null timestampMs/confidence (boundary)", () => {
+    const result = captionSchema.safeParse({
+      ...baseCaption,
+      text: " a",
+      timestampMs: null,
+      confidence: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a very long token text (boundary: no max length enforced)", () => {
+    const result = captionSchema.safeParse({ ...baseCaption, text: "a".repeat(10_000) });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts an empty token text", () => {
+    const result = captionSchema.safeParse({ ...baseCaption, text: "" });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an unknown extra field (strict)", () => {
+    const result = captionSchema.safeParse({ ...baseCaption, extra: "nope" });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts an empty captions file (a silent scene)", () => {
+    expect(captionsFileSchema.safeParse([]).success).toBe(true);
+  });
+
+  it("accepts a captions file with multiple tokens in order", () => {
+    const result = captionsFileSchema.safeParse([
+      baseCaption,
+      { ...baseCaption, text: " just", startMs: 420, endMs: 650, timestampMs: 480 },
+    ]);
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("projectSceneParamsSchema", () => {
+  it("coerces a numeric index string from the URL", () => {
+    const result = projectSceneParamsSchema.safeParse({
+      id: "8f14e45f-ceea-4a3c-8c8c-000000000000",
+      index: "1",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.index).toBe(1);
+    }
+  });
+
+  it("rejects a negative index (boundary)", () => {
+    const result = projectSceneParamsSchema.safeParse({
+      id: "8f14e45f-ceea-4a3c-8c8c-000000000000",
+      index: "-1",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("approveSceneBodySchema", () => {
+  it("accepts an empty body (approve the current imageFile)", () => {
+    expect(approveSceneBodySchema.safeParse({}).success).toBe(true);
+  });
+
+  it("accepts a non-negative variantIndex", () => {
+    expect(approveSceneBodySchema.safeParse({ variantIndex: 0 }).success).toBe(true);
+  });
+
+  it("rejects a negative variantIndex (boundary)", () => {
+    expect(approveSceneBodySchema.safeParse({ variantIndex: -1 }).success).toBe(false);
   });
 });
 

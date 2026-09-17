@@ -58,7 +58,12 @@ export function createProjectStore(projectsRoot: string): ProjectStore {
       schemaVersion: CURRENT_SCHEMA_VERSION,
       createdAt: new Date().toISOString(),
       runStatus: "idle",
-      scenes: input.scenes.map((scene) => ({ ...scene, status: "pending", attempts: 0 })),
+      scenes: input.scenes.map((scene) => ({
+        ...scene,
+        status: "pending",
+        attempts: 0,
+        imageVariants: [],
+      })),
     };
 
     await queueFor(id).add(async () => {

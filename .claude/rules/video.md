@@ -26,13 +26,14 @@ paths: ["video/**"]
 
 - `video/src/timing/safe-viewport.ts`'s `computeSafeViewport(imageSize, frameSize, logo)` takes the SOURCE IMAGE's real pixel size and the video frame's size (not just the logo box) — the visible window is an `object-fit: cover` crop of the image sized to the frame's aspect ratio, so an image whose aspect ratio differs from the frame (e.g. a 1376x768 Flow image into a 9:16 frame) crops correctly instead of getting distorted or the wrong window size. Every `RenderableScene` therefore carries `imageWidth`/`imageHeight` alongside its `imageUrl`.
 - It returns a `minZoom` (>=1) and which axis/edge the window must stay anchored to; Ken Burns then zooms from `minZoom` up over the scene's duration while anchored there, and centers on the OTHER (free) axis. This guarantees every frame stays clear of the logo box, since the window only shrinks as zoom increases past `minZoom`.
-- The logo box for 16:9/9:16 at 1K/2K is measured on a real downloaded Flow image in task 005 and recorded here as a named constant once known; until then, task 002 uses an assumed box flagged `TODO(measure)`.
+- The logo box: **measured live for 16:9** (task 005, 2026-09-17) from a real Flow-generated 1376x768 image — `video/src/timing/safe-viewport.ts`'s `ASSUMED_LOGO_BOX` = `{x:0.66, y:0.74, width:0.34, height:0.26}` (a comfortable margin around the actual sparkle+comet-tail extent, not a tight pixel crop). **9:16 is still unmeasured** and reuses this same box as a working default until a real 9:16 image is measured the same way.
 
 ## Captions (TikTok-style)
 
 - Word-level timestamps come from whisper.cpp (`@remotion/install-whisper-cpp`), a multilingual model (no `.en` suffix), forced `language: 'vi'`, run on a 16kHz mono WAV.
 - Rendered via `createTikTokStyleCaptions`; each token keeps its leading space exactly as returned.
-- Font: `@remotion/google-fonts`, subset `vietnamese`, so diacritics render correctly.
+- Font: `@remotion/google-fonts`, subset `vietnamese`, so diacritics render correctly. Chosen font: `Be Vietnam Pro` (`video/src/captions/tiktok-captions.tsx`) — a Google Font whose `vietnamese` subset ships with the package and covers every Vietnamese diacritic combination.
+- `createTikTokStyleCaptions` strips the leading space off the FIRST token in the whole `Caption[]` array (nothing precedes it) and only breaks into a new page once the CURRENT page's own span (first token's `startMs` to the last-added token's `endMs`) exceeds `combineTokensWithinMilliseconds` AND the next token's text starts with a space — a real time GAP between two tokens does NOT by itself force a page break (verified against the library's real output, task 007). `video/src/captions/caption-tokenizer.ts`'s `groupCaptionsForDisplay` is a thin, side-effect-free wrapper; do not re-derive this splitting logic elsewhere.
 
 ## Rendering
 

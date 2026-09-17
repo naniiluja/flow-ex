@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 
-import type { Project } from "@flow-ex/shared-schemas";
+import type { AspectRatio, Project } from "@flow-ex/shared-schemas";
 
 /** Provider/strategy interfaces (../../.claude/rules/architecture.md): the pipeline depends on
  * these, never on a concrete provider (Flow/Vbee/fake) directly, so a provider can be swapped or
@@ -9,6 +9,14 @@ import type { Project } from "@flow-ex/shared-schemas";
 export interface ImageGenerationContext {
   projectId: string;
   sceneIndex: number;
+  /** From `project.json`'s `aspectRatio` (task 005's `FlowImageProvider` selects the matching
+   * Flow settings toggle from this); a stateless provider like `FakeImageProvider` ignores it. */
+  aspectRatio: AspectRatio;
+  /** Per-run child logger (`{projectId, runId, stage: "image"}`), same rationale as
+   * `AudioGenerationContext.logger`'s own doc comment below (pino output only, not the NDJSON
+   * run-log file or the SSE stream). `FlowImageProvider` uses it for `flow.image.generate`'s
+   * entry/exit; a stateless provider like `FakeImageProvider` ignores it. */
+  logger?: Logger;
 }
 
 export interface GeneratedImage {
@@ -59,6 +67,32 @@ export interface GeneratedAudio {
 
 export interface TtsProvider {
   synthesize(text: string, context: AudioGenerationContext): Promise<GeneratedAudio>;
+}
+
+export interface TranscriptionContext {
+  projectId: string;
+  sceneIndex: number;
+  /** The scene's already-measured audio duration (`ProjectScene.audioDurationMs`). A real
+   * whisper provider ignores it and derives timing from the audio itself; a stateless fake
+   * provider uses it to fabricate evenly-spaced timestamps without decoding real audio. */
+  durationMs: number;
+  /** The scene's narration text. A real whisper provider ignores it (it transcribes the actual
+   * audio); a fake provider tokenizes it directly, the same way `FakeImageProvider`/
+   * `FakeTtsProvider` use their own scene inputs to fabricate a deterministic result. */
+  narration: string;
+  /** Per-run child logger (`{projectId, runId, stage: "captions"}`), same rationale as
+   * `AudioGenerationContext.logger`'s own doc comment (pino output only, not the NDJSON run-log
+   * file or the SSE stream). */
+  logger?: Logger;
+}
+
+export interface GeneratedCaptions {
+  /** Path relative to the project's assets folder, e.g. "captions/000.json". */
+  file: string;
+}
+
+export interface TranscriptionProvider {
+  transcribe(audioFile: string, context: TranscriptionContext): Promise<GeneratedCaptions>;
 }
 
 /** Renders a project whose scenes are all `ready_for_render` into a real MP4 (task 002's

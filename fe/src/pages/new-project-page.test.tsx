@@ -55,10 +55,19 @@ describe("NewProjectPage", () => {
       title: "Cau chuyen mua he",
       voice: "hn_female_ngochuyen_full_48k-fhg",
       aspectRatio: "16:9",
+      reviewEnabled: false,
       schemaVersion: 1,
       createdAt: new Date().toISOString(),
       runStatus: "idle",
-      scenes: [{ narration: "Xin chao", imagePrompt: "beach", status: "pending", attempts: 0 }],
+      scenes: [
+        {
+          narration: "Xin chao",
+          imagePrompt: "beach",
+          status: "pending",
+          attempts: 0,
+          imageVariants: [],
+        },
+      ],
     };
     const createSpy = vi.spyOn(apiClient, "createProject").mockResolvedValue(project);
     renderPage();

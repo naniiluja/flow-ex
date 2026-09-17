@@ -8,7 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScriptInput } from "@flow-ex/shared-schemas";
 
 import { AppError } from "../domain/app-error.ts";
-import type { ImageProvider, TtsProvider, VideoRenderer } from "../domain/providers.ts";
+import type {
+  ImageProvider,
+  TranscriptionProvider,
+  TtsProvider,
+  VideoRenderer,
+} from "../domain/providers.ts";
 import { createProjectStore, type ProjectStore } from "../store/project-store.ts";
 import { createPipelineEngine } from "./pipeline-engine.ts";
 import type { PipelineEvent, PipelineEventBus } from "./pipeline-events.ts";
@@ -20,6 +25,7 @@ const SCRIPT_2_SCENES: ScriptInput = {
   title: "Cau chuyen mua he",
   voice: "hn_female_ngochuyen_full_48k-fhg",
   aspectRatio: "16:9",
+  reviewEnabled: false,
   scenes: [
     { narration: "Xin chao", imagePrompt: "a sunny beach" },
     { narration: "Tam biet", imagePrompt: "a quiet evening" },
@@ -27,6 +33,14 @@ const SCRIPT_2_SCENES: ScriptInput = {
 };
 
 const NOOP_RENDERER: VideoRenderer = { render: () => Promise.resolve(undefined) };
+
+/** Default fake `TranscriptionProvider` for tests that don't care about the captions step itself
+ * (most of this file predates task 007's transcribing status) — succeeds immediately with a
+ * fixed file, so `runCaptionStep` still exercises the real transcribing -> ready_for_render
+ * transition without every existing test needing its own transcription double. */
+const DEFAULT_TRANSCRIPTION_PROVIDER: TranscriptionProvider = {
+  transcribe: () => Promise.resolve({ file: "captions/000.json" }),
+};
 
 /** A spy `Logger` where every `.child(...)` call (pipeline-engine.ts creates a fresh child per
  * log line) returns the SAME mocked child, so `.info`/`.warn`/`.error` calls across the whole run
@@ -53,12 +67,14 @@ function buildEngine(
     videoRenderer?: VideoRenderer;
     eventBus?: PipelineEventBus;
     baseLogger?: Logger;
+    transcriptionProvider?: TranscriptionProvider;
   } = {},
 ) {
   return createPipelineEngine({
     store,
     imageProvider,
     ttsProvider,
+    transcriptionProvider: overrides.transcriptionProvider ?? DEFAULT_TRANSCRIPTION_PROVIDER,
     baseLogger: overrides.baseLogger ?? SILENT_LOGGER,
     retryScheduleMs: overrides.scheduleMs ?? [1, 1, 1],
     jitter: NO_JITTER,
@@ -144,7 +160,12 @@ describe("createPipelineEngine", () => {
     const sceneStatuses = received
       .filter((event) => event.type === "scene")
       .map((event) => event.status);
-    expect(sceneStatuses).toEqual(["generating_image", "generating_audio", "ready_for_render"]);
+    expect(sceneStatuses).toEqual([
+      "generating_image",
+      "generating_audio",
+      "transcribing",
+      "ready_for_render",
+    ]);
   });
 
   it("writes an NDJSON run log with the required correlation fields (acceptance criterion 6)", async () => {
@@ -299,6 +320,82 @@ describe("createPipelineEngine", () => {
     expect(scene0.imageFile).toBe("existing.png"); // untouched by this run
   });
 
+  it("pauses at awaiting_review once every scene's image is generated, when reviewEnabled is on (task 006)", async () => {
+    const project = await store.create({ ...SCRIPT_2_SCENES, reviewEnabled: true });
+    const generateImage = vi
+      .fn<ImageProvider["generateImage"]>()
+      .mockResolvedValue({ file: "img.png", width: 1376, height: 768 });
+    const synthesize = vi.fn<TtsProvider["synthesize"]>();
+    const render = vi.fn<VideoRenderer["render"]>();
+
+    const result = await buildEngine(
+      store,
+      { generateImage },
+      { synthesize },
+      { videoRenderer: { render } },
+    ).run(project.id);
+
+    expect(result.runStatus).toBe("awaiting_review");
+    for (const scene of result.scenes) {
+      expect(scene.status).toBe("awaiting_review");
+      expect(scene.imageVariants).toEqual([{ file: "img.png", width: 1376, height: 768 }]);
+    }
+    expect(synthesize).not.toHaveBeenCalled();
+    expect(render).not.toHaveBeenCalled();
+  });
+
+  it("resumes past the review gate and completes once every scene is approved (task 006)", async () => {
+    const project = await store.create({ ...SCRIPT_2_SCENES, reviewEnabled: true });
+    const generateImage = vi
+      .fn<ImageProvider["generateImage"]>()
+      .mockResolvedValue({ file: "img.png", width: 1376, height: 768 });
+    const synthesize = vi
+      .fn<TtsProvider["synthesize"]>()
+      .mockResolvedValue({ file: "audio.wav", durationMs: 1500 });
+    const render = vi.fn<VideoRenderer["render"]>().mockResolvedValue(undefined);
+    const engine = buildEngine(
+      store,
+      { generateImage },
+      { synthesize },
+      { videoRenderer: { render } },
+    );
+
+    const paused = await engine.run(project.id);
+    expect(paused.runStatus).toBe("awaiting_review");
+
+    // Simulate the FE's approve action for every scene (be/src/routes/scenes.ts, task 006):
+    // scene_approved moves each scene from awaiting_review to generating_audio directly.
+    await store.update(project.id, (p) => ({
+      ...p,
+      scenes: p.scenes.map((scene) => ({ ...scene, status: "generating_audio" as const })),
+    }));
+
+    const finished = await engine.run(project.id);
+
+    expect(finished.runStatus).toBe("completed");
+    expect(finished.runId).toBe(paused.runId); // same logical run, one continuous NDJSON log
+    expect(generateImage).toHaveBeenCalledTimes(2); // not re-generated on resume
+    expect(synthesize).toHaveBeenCalledTimes(2);
+    expect(render).toHaveBeenCalledTimes(1);
+  });
+
+  it("never pauses when reviewEnabled is off (default), matching every prior task's behavior", async () => {
+    const project = await store.create(SCRIPT_2_SCENES);
+    const generateImage = vi
+      .fn<ImageProvider["generateImage"]>()
+      .mockResolvedValue({ file: "img.png", width: 1920, height: 1080 });
+    const synthesize = vi
+      .fn<TtsProvider["synthesize"]>()
+      .mockResolvedValue({ file: "audio.wav", durationMs: 1500 });
+
+    const result = await buildEngine(store, { generateImage }, { synthesize }).run(project.id);
+
+    expect(result.runStatus).toBe("completed");
+    for (const scene of result.scenes) {
+      expect(scene.status).toBe("ready_for_render");
+    }
+  });
+
   it("persists a stateful TTS provider's requestId before polling, so a retry resumes from it instead of resubmitting (task 004)", async () => {
     const project = await store.create(SCRIPT_2_SCENES);
     const generateImage = vi
@@ -346,5 +443,79 @@ describe("createPipelineEngine", () => {
     if (scene0 === undefined) throw new Error("expected scene 0");
     expect(scene0.audioRequestId).toBe("req-1");
     expect(scene0.audioRequestSubmittedAt).toBe("2026-01-01T00:00:00.000Z");
+  });
+
+  it("transcribes each scene's audio and persists captionsFile (task 007)", async () => {
+    const project = await store.create(SCRIPT_2_SCENES);
+    const generateImage = vi
+      .fn<ImageProvider["generateImage"]>()
+      .mockResolvedValue({ file: "img.png", width: 1920, height: 1080 });
+    const synthesize = vi
+      .fn<TtsProvider["synthesize"]>()
+      .mockResolvedValue({ file: "audio.wav", durationMs: 1500 });
+    const transcribe = vi
+      .fn<TranscriptionProvider["transcribe"]>()
+      .mockImplementation((_audioFile, context) =>
+        Promise.resolve({ file: `captions/${String(context.sceneIndex)}.json` }),
+      );
+
+    const result = await buildEngine(
+      store,
+      { generateImage },
+      { synthesize },
+      {
+        transcriptionProvider: { transcribe },
+      },
+    ).run(project.id);
+
+    expect(result.runStatus).toBe("completed");
+    expect(transcribe).toHaveBeenCalledTimes(2);
+    expect(transcribe).toHaveBeenCalledWith(
+      "audio.wav",
+      expect.objectContaining({ sceneIndex: 0, durationMs: 1500, narration: "Xin chao" }),
+    );
+    for (const [index, scene] of result.scenes.entries()) {
+      expect(scene.captionsFile).toBe(`captions/${String(index)}.json`);
+    }
+  });
+
+  it("marks the scene and the run failed when transcription itself fails, without touching the audio already generated", async () => {
+    const project = await store.create({
+      ...SCRIPT_2_SCENES,
+      scenes: [SCRIPT_2_SCENES.scenes[0] ?? { narration: "x", imagePrompt: "y" }],
+    });
+    const generateImage = vi
+      .fn<ImageProvider["generateImage"]>()
+      .mockResolvedValue({ file: "img.png", width: 1920, height: 1080 });
+    const synthesize = vi
+      .fn<TtsProvider["synthesize"]>()
+      .mockResolvedValue({ file: "audio.wav", durationMs: 1500 });
+    const persistentError = new AppError({
+      code: "WHISPER_DOWN",
+      errorKind: "transient",
+      message: "always fails",
+    });
+    const transcribe = vi
+      .fn<TranscriptionProvider["transcribe"]>()
+      .mockRejectedValue(persistentError);
+
+    await expect(
+      buildEngine(
+        store,
+        { generateImage },
+        { synthesize },
+        {
+          transcriptionProvider: { transcribe },
+        },
+      ).run(project.id),
+    ).rejects.toBe(persistentError);
+
+    const finalProject = await store.read(project.id);
+    expect(finalProject.runStatus).toBe("failed");
+    const scene0 = finalProject.scenes[0];
+    if (scene0 === undefined) throw new Error("expected scene 0");
+    expect(scene0.status).toBe("failed");
+    expect(scene0.audioFile).toBe("audio.wav"); // the already-generated audio is left in place
+    expect(scene0.lastError).toEqual({ code: "WHISPER_DOWN", message: "always fails" });
   });
 });

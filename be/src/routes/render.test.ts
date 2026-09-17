@@ -18,6 +18,7 @@ const SCRIPT: ScriptInput = {
   title: "Cau chuyen mua he",
   voice: "hn_female_ngochuyen_full_48k-fhg",
   aspectRatio: "16:9",
+  reviewEnabled: false,
   scenes: [
     { narration: "Xin chao", imagePrompt: "a sunny beach" },
     { narration: "Tam biet", imagePrompt: "a quiet evening" },
@@ -93,6 +94,60 @@ describe("POST /api/projects/:id/render (e2e)", () => {
       outputPath,
     ]);
     expect(Number.parseInt(stdout.trim(), 10)).toBeGreaterThan(0);
+  }, 90_000);
+
+  /** Task 006's literal AC: "e2e: chạy pipeline giả, dừng ở awaiting_review, duyệt 1 cảnh, render
+   * ra output.mp4" — a real HTTP flow through the review gate, not a pipeline-engine-only test. */
+  it("pauses at awaiting_review, then completes after approving every scene and re-posting /render", async () => {
+    const created = await fetch(`${baseUrl}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...SCRIPT, reviewEnabled: true }),
+    });
+    const project = projectSchema.parse(await created.json());
+
+    const started = await fetch(`${baseUrl}/api/projects/${project.id}/render`, { method: "POST" });
+    expect(started.status).toBe(202);
+
+    const reviewDeadline = Date.now() + 30_000;
+    let pausedProject = project;
+    while (pausedProject.runStatus !== "awaiting_review") {
+      if (Date.now() > reviewDeadline) throw new Error("timed out waiting for awaiting_review");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const response = await fetch(`${baseUrl}/api/projects/${project.id}`);
+      pausedProject = projectSchema.parse(await response.json());
+    }
+    for (const scene of pausedProject.scenes) {
+      expect(scene.status).toBe("awaiting_review");
+    }
+
+    for (let sceneIndex = 0; sceneIndex < pausedProject.scenes.length; sceneIndex++) {
+      const approved = await fetch(
+        `${baseUrl}/api/projects/${project.id}/scenes/${String(sceneIndex)}/approve`,
+        { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+      );
+      expect(approved.status).toBe(200);
+    }
+
+    const resumed = await fetch(`${baseUrl}/api/projects/${project.id}/render`, { method: "POST" });
+    expect(resumed.status).toBe(202);
+
+    const completeDeadline = Date.now() + 60_000;
+    let finalProject = pausedProject;
+    while (finalProject.runStatus !== "completed" && finalProject.runStatus !== "failed") {
+      if (Date.now() > completeDeadline) throw new Error("timed out waiting for completion");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const response = await fetch(`${baseUrl}/api/projects/${project.id}`);
+      finalProject = projectSchema.parse(await response.json());
+    }
+
+    expect(finalProject.runStatus).toBe("completed");
+    expect(finalProject.outputFile).toBe("output.mp4");
+    for (const scene of finalProject.scenes) {
+      expect(scene.status).toBe("ready_for_render");
+    }
+    const stat = await fs.stat(path.join(root, project.id, "output.mp4"));
+    expect(stat.size).toBeGreaterThan(0);
   }, 90_000);
 
   it("rejects a second render with 409 while one is already running on the same project", async () => {

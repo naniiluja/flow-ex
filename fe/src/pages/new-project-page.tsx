@@ -12,6 +12,7 @@ const PLACEHOLDER = `{
   "title": "Cau chuyen mua he",
   "voice": "hn_female_ngochuyen_full_48k-fhg",
   "aspectRatio": "16:9",
+  "reviewEnabled": true,
   "scenes": [
     { "narration": "Xin chao", "imagePrompt": "a sunny beach at dawn" }
   ]

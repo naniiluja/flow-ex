@@ -72,7 +72,11 @@ export function createFakeImageProvider(options: FakeImageProviderOptions): Imag
     if (color === undefined) {
       throw new Error("fake-image-provider: unreachable, modulo index is always in range");
     }
-    const fileName = `${String(context.sceneIndex).padStart(3, "0")}.png`;
+    // `priorCalls` (already tracked above for the transient-failure simulation) doubles as a
+    // per-scene call counter here, so each call gets a UNIQUE file name — same reasoning as
+    // `FlowImageProvider`'s own UUID-based name: a "Sinh lại" regenerate (task 006) must produce
+    // a genuinely new variant on disk, not overwrite the previous one under the same path.
+    const fileName = `${String(context.sceneIndex).padStart(3, "0")}-${String(priorCalls)}.png`;
     const imagesDir = path.join(options.assetsDir, "images");
     await fs.mkdir(imagesDir, { recursive: true });
     await fs.writeFile(

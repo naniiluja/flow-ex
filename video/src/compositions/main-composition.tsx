@@ -1,9 +1,11 @@
+import type { Caption } from "@remotion/captions";
 import { Audio } from "@remotion/media";
 import { springTiming, TransitionSeries } from "@remotion/transitions";
 import type { CalculateMetadataFunction } from "remotion";
 import { AbsoluteFill, Img, useCurrentFrame, useVideoConfig } from "remotion";
 import React from "react";
 
+import { TikTokCaptions } from "../captions/tiktok-captions.tsx";
 import { sceneFramesForTimeline, totalTimelineDurationInFrames } from "../timing/scene-duration.ts";
 import {
   ASSUMED_LOGO_BOX,
@@ -15,13 +17,15 @@ import { crossZoomPresentation } from "./cross-zoom-presentation.tsx";
 /** One scene's render-ready data: an image + audio URL, the source image's real pixel size (for
  * an aspect-correct Ken Burns crop), and the audio's measured duration. `durationMs` is measured
  * once by the backend right after TTS and stored in `project.json`; the composition never
- * re-measures audio itself (video.md). */
+ * re-measures audio itself (video.md). `captions` (task 007) is optional so a scene that has not
+ * been transcribed yet (or a task-002 sample fixture) still renders without any subtitle overlay. */
 export interface RenderableScene {
   imageUrl: string;
   imageWidth: number;
   imageHeight: number;
   audioUrl: string;
   durationMs: number;
+  captions?: Caption[];
 }
 
 export interface MainCompositionProps extends Record<string, unknown> {
@@ -149,6 +153,9 @@ export function MainComposition({ scenes }: MainCompositionProps): React.ReactEl
               imageHeight={scene.imageHeight}
             />
             <Audio src={scene.audioUrl} />
+            {scene.captions !== undefined && scene.captions.length > 0 && (
+              <TikTokCaptions captions={scene.captions} />
+            )}
           </TransitionSeries.Sequence>
           {index < scenes.length - 1 && (
             <TransitionSeries.Transition

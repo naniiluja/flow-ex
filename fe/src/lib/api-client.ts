@@ -55,3 +55,48 @@ export async function getProject(id: string): Promise<Project> {
 
   return projectSchema.parse(await response.json());
 }
+
+/** Task 006's review-gate routes (../../be/.claude/rules/api-design.md): both return the whole
+ * updated `Project`, which the calling mutation hook writes straight into the TanStack Query
+ * cache (../.claude/rules/state-management.md) instead of waiting on an SSE event — the pipeline
+ * ENGINE itself never emits one for either route (it isn't running during a review-gate pause),
+ * but the `approve` ROUTE does emit its own `event: scene` afterward (`be/src/routes/scenes.ts`,
+ * api-design.md), so another tab watching the same project still sees the status change land. */
+export async function approveScene(
+  projectId: string,
+  sceneIndex: number,
+  variantIndex?: number,
+): Promise<Project> {
+  const response = await fetch(`/api/projects/${projectId}/scenes/${String(sceneIndex)}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(variantIndex === undefined ? {} : { variantIndex }),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+
+  return projectSchema.parse(await response.json());
+}
+
+export async function regenerateScene(projectId: string, sceneIndex: number): Promise<Project> {
+  const response = await fetch(
+    `/api/projects/${projectId}/scenes/${String(sceneIndex)}/regenerate`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+
+  return projectSchema.parse(await response.json());
+}
+
+export async function startRender(projectId: string): Promise<void> {
+  const response = await fetch(`/api/projects/${projectId}/render`, { method: "POST" });
+
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+}

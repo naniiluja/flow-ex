@@ -16,8 +16,25 @@ const vbeeCredentials =
   env.VBEE_APP_ID && env.VBEE_TOKEN
     ? { appId: env.VBEE_APP_ID, token: env.VBEE_TOKEN, webhookUrl: env.VBEE_WEBHOOK_URL }
     : undefined;
+const flowChromeOptions = {
+  userDataDir: env.CHROME_USER_DATA_DIR,
+  cdpPort: env.CHROME_CDP_PORT,
+  chromeExecutablePath: env.CHROME_EXECUTABLE_PATH,
+};
 
-const app = buildApp({ store, loggerInstance: logger, vbeeCredentials });
+const app = buildApp({
+  store,
+  loggerInstance: logger,
+  vbeeCredentials,
+  flowImageProviderMode: env.FLOW_IMAGE_PROVIDER,
+  flowChromeOptions,
+  transcriptionMode: env.TRANSCRIBE_PROVIDER,
+  whisperOptions: {
+    cacheDir: env.WHISPER_CACHE_DIR,
+    model: env.WHISPER_MODEL,
+    whisperCppVersion: env.WHISPER_CPP_VERSION,
+  },
+});
 
 async function start(): Promise<void> {
   try {

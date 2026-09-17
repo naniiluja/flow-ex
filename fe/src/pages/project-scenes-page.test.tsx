@@ -24,16 +24,24 @@ function renderAt(projectId: string) {
   );
 }
 
-function makeProject(scenes: { narration: string; imagePrompt: string }[]): Project {
+function makeProject(
+  scenes: { narration: string; imagePrompt: string; status?: Project["scenes"][number]["status"] }[],
+): Project {
   return {
     id: "11111111-1111-1111-1111-111111111111",
     title: "Du an test",
     voice: "hn_female_ngochuyen_full_48k-fhg",
     aspectRatio: "16:9",
+    reviewEnabled: false,
     schemaVersion: 1,
     createdAt: new Date().toISOString(),
     runStatus: "idle",
-    scenes: scenes.map((scene) => ({ ...scene, status: "pending", attempts: 0 })),
+    scenes: scenes.map(({ status, ...scene }) => ({
+      ...scene,
+      status: status ?? "pending",
+      attempts: 0,
+      imageVariants: [],
+    })),
   };
 }
 
@@ -84,6 +92,38 @@ describe("ProjectScenesPage", () => {
     renderAt(project.id);
 
     await waitFor(() => expect(screen.getByText("Chờ xử lý")).toBeInTheDocument());
+  });
+
+  it('shows the "Duyệt ảnh" link once a scene reaches awaiting_review, gated on the SCENE status (not runStatus, which SSE never patches)', async () => {
+    const project = makeProject([
+      { narration: "Xin chao", imagePrompt: "beach", status: "awaiting_review" },
+    ]);
+    vi.spyOn(apiClient, "getProject").mockResolvedValue(project);
+
+    renderAt(project.id);
+
+    await waitFor(() => expect(screen.getByRole("link", { name: "Duyệt ảnh" })).toBeInTheDocument());
+  });
+
+  it('does not show the "Duyệt ảnh" link when no scene is awaiting_review', async () => {
+    const project = makeProject([{ narration: "Xin chao", imagePrompt: "beach" }]);
+    vi.spyOn(apiClient, "getProject").mockResolvedValue(project);
+
+    renderAt(project.id);
+
+    await waitFor(() => expect(screen.getByText("Cảnh 1")).toBeInTheDocument());
+    expect(screen.queryByRole("link", { name: "Duyệt ảnh" })).not.toBeInTheDocument();
+  });
+
+  it('shows "Đang tạo phụ đề" for a scene in the transcribing status (task 007)', async () => {
+    const project = makeProject([
+      { narration: "Xin chao", imagePrompt: "beach", status: "transcribing" },
+    ]);
+    vi.spyOn(apiClient, "getProject").mockResolvedValue(project);
+
+    renderAt(project.id);
+
+    await waitFor(() => expect(screen.getByText("Đang tạo phụ đề")).toBeInTheDocument());
   });
 
   it("switches to the Log tab and shows the empty-log placeholder before any SSE event arrives", async () => {

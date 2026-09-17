@@ -1,3 +1,5 @@
+import { projectAssetUrl } from "../lib/project-asset-url";
+
 export interface SceneAudioPreviewProps {
   projectId: string;
   audioFile?: string;
@@ -12,7 +14,7 @@ export function SceneAudioPreview({ projectId, audioFile }: SceneAudioPreviewPro
   }
 
   return (
-    <audio controls src={`/api/projects/${projectId}/assets/${audioFile}`} className="w-full">
+    <audio controls src={projectAssetUrl(projectId, audioFile)} className="w-full">
       Trình duyệt của bạn không hỗ trợ phát audio.
     </audio>
   );

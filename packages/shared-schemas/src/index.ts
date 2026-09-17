@@ -54,6 +54,7 @@ export const ttsOptionsSchema = z
 export type TtsOptions = z.infer<typeof ttsOptionsSchema>;
 
 export const aspectRatioSchema = z.enum(["16:9", "9:16"]);
+export type AspectRatio = z.infer<typeof aspectRatioSchema>;
 
 export const sceneSchema = z
   .object({
@@ -68,6 +69,11 @@ export const scriptInputSchema = z
     voice: z.string().trim().min(1),
     aspectRatio: aspectRatioSchema,
     tts: ttsOptionsSchema.optional(),
+    // Task 006's "Dừng để duyệt" switch: an opt-in per run, decided at project creation and
+    // persisted so a resumed run reads the SAME choice rather than re-asking (../../be/.claude
+    // /rules/flow-automation.md's review-gate design). Defaults off so tasks 002-005's existing
+    // fake-provider e2e flow keeps completing straight through, unchanged.
+    reviewEnabled: z.boolean().default(false),
     scenes: z.array(sceneSchema).min(1),
   })
   .strict();
@@ -76,11 +82,18 @@ export type ScriptInput = z.infer<typeof scriptInputSchema>;
 
 /** Per-scene pipeline state (task 003): pending -> generating_image -> generating_audio ->
  * ready_for_render, or failed once its retry schedule is exhausted (see
- * be/.claude/rules/backend-conventions.md and ../../../.claude/rules/error-handling.md). */
+ * be/.claude/rules/backend-conventions.md and ../../../.claude/rules/error-handling.md).
+ * Task 006 inserts `awaiting_review` between `generating_image` and `generating_audio`, taken
+ * ONLY when the project's `reviewEnabled` switch is on. Task 007 inserts `transcribing` between
+ * `generating_audio` and `ready_for_render`: once the audio file exists, whisper.cpp generates
+ * its word-level caption timestamps before the scene is considered render-ready
+ * (../../.claude/rules/video.md's Captions section). */
 export const sceneStatusSchema = z.enum([
   "pending",
   "generating_image",
+  "awaiting_review",
   "generating_audio",
+  "transcribing",
   "ready_for_render",
   "failed",
 ]);
@@ -94,11 +107,54 @@ export const sceneErrorSchema = z
   })
   .strict();
 
-/** Project-level render run status: idle (no run started yet), running, completed (output.mp4
- * written), or failed (a scene exhausted its retries or hit a needs_user/fatal error). */
-export const runStatusSchema = z.enum(["idle", "running", "completed", "failed"]);
+/** Project-level render run status: idle (no run started yet), running, awaiting_review (task
+ * 006: every scene has finished its image step and `reviewEnabled` is on, but at least one scene
+ * is still `awaiting_review` — the run is paused, not failed, and resumes on the NEXT
+ * `POST /render` call once every scene is approved), completed (output.mp4 written), or failed
+ * (a scene exhausted its retries or hit a needs_user/fatal error). */
+export const runStatusSchema = z.enum([
+  "idle",
+  "running",
+  "awaiting_review",
+  "completed",
+  "failed",
+]);
 
 export type RunStatus = z.infer<typeof runStatusSchema>;
+
+/** One generated image kept for the review grid (task 006): every successful `generateImage`
+ * call appends one entry, in generation order, whether reviewEnabled or not (imageVariants[0] is
+ * always the image `imageFile` currently points at when review is off). */
+export const imageVariantSchema = z
+  .object({
+    file: z.string(),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+  })
+  .strict();
+
+export type ImageVariant = z.infer<typeof imageVariantSchema>;
+
+/** One word-level caption token, structurally identical to `@remotion/captions`'s own `Caption`
+ * type (task 007) — duck-typed here rather than importing that package, so `packages/shared-schemas`
+ * stays free of a Remotion dependency (only `be/` and `video/` need the real library). Written by
+ * `be/src/providers/whisper/whisper-transcription-provider.ts` into
+ * `projects/<id>/assets/captions/<sceneIndex>.json`, and validated at that read boundary by
+ * `be/src/render/create-remotion-video-renderer.ts` before the JSON reaches the render pipeline. */
+export const captionSchema = z
+  .object({
+    text: z.string(),
+    startMs: z.number(),
+    endMs: z.number(),
+    timestampMs: z.number().nullable(),
+    confidence: z.number().nullable(),
+    pageBreakAfter: z.boolean().optional(),
+  })
+  .strict();
+
+export type CaptionData = z.infer<typeof captionSchema>;
+
+export const captionsFileSchema = z.array(captionSchema);
 
 /** A scene as stored in project.json: the user's input scene plus its pipeline runtime state.
  * `imageFile`/`audioFile` are paths relative to the project's `assets/` folder. */
@@ -110,6 +166,11 @@ export const projectSceneSchema = sceneSchema.extend({
   // correctly when it differs from the fake 1920x1080 default (real Flow images are 1376x768).
   imageWidth: z.number().int().positive().optional(),
   imageHeight: z.number().int().positive().optional(),
+  // Every image ever generated for this scene (the first Flow call plus every "Sinh lại"
+  // regenerate, be/.claude/rules/flow-automation.md); `imageFile`/Width/Height always mirror the
+  // variant the pipeline/FE currently treats as selected. Defaults to [] so a project created
+  // before task 006 still parses.
+  imageVariants: z.array(imageVariantSchema).default([]),
   audioFile: z.string().optional(),
   audioDurationMs: z.number().nonnegative().optional(),
   // Vbee-specific resume state (be/.claude/rules/vbee-tts.md, task 004): written atomically the
@@ -118,6 +179,9 @@ export const projectSceneSchema = sceneSchema.extend({
   // completes synchronously never sets these.
   audioRequestId: z.string().optional(),
   audioRequestSubmittedAt: z.iso.datetime().optional(),
+  // Task 007: path (relative to the project's assets folder, e.g. "captions/000.json") to this
+  // scene's word-level caption timestamps, written once whisper.cpp transcribes its audio file.
+  captionsFile: z.string().optional(),
   lastError: sceneErrorSchema.optional(),
 });
 
@@ -177,6 +241,24 @@ export type PipelineEvent = z.infer<typeof pipelineEventSchema>;
 export const projectIdParamsSchema = z
   .object({
     id: z.uuid(),
+  })
+  .strict();
+
+/** Route params for `POST /api/projects/:id/scenes/:index/{approve,regenerate}`
+ * (../../be/.claude/rules/api-design.md, task 006). */
+export const projectSceneParamsSchema = z
+  .object({
+    id: z.uuid(),
+    index: z.coerce.number().int().nonnegative(),
+  })
+  .strict();
+
+/** Optional body for the approve route: pick a specific variant by its index into
+ * `imageVariants`; omitted means "keep whatever `imageFile` already points at" (the most
+ * recently generated variant, since every regenerate overwrites it too). */
+export const approveSceneBodySchema = z
+  .object({
+    variantIndex: z.number().int().nonnegative().optional(),
   })
   .strict();
 

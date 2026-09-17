@@ -1,4 +1,4 @@
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 
 import type { SceneStatus } from "@flow-ex/shared-schemas";
 
@@ -12,7 +12,9 @@ import { useProjectEvents } from "../hooks/use-project-events";
 const STATUS_LABEL: Record<SceneStatus, string> = {
   pending: "Chờ xử lý",
   generating_image: "Đang sinh ảnh",
+  awaiting_review: "Chờ duyệt",
   generating_audio: "Đang sinh giọng đọc",
+  transcribing: "Đang tạo phụ đề",
   ready_for_render: "Sẵn sàng dựng video",
   failed: "Thất bại",
 };
@@ -35,7 +37,17 @@ export function ProjectScenesPage() {
 
   return (
     <main className="mx-auto max-w-2xl p-6">
-      <h1 className="mb-4 text-lg font-medium">{project.title}</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-lg font-medium">{project.title}</h1>
+        {project.scenes.some((scene) => scene.status === "awaiting_review") && (
+          <Link
+            to={`/projects/${project.id}/review`}
+            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Duyệt ảnh
+          </Link>
+        )}
+      </div>
       <Tabs defaultValue="scenes">
         <TabsList>
           <TabsTrigger value="scenes">Cảnh</TabsTrigger>

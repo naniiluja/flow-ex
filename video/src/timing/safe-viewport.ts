@@ -2,9 +2,6 @@ import { interpolate } from "remotion";
 
 /**
  * A logo/watermark bounding box, normalized to the source image (0..1 on both axes).
- * `TODO(measure)`: this box is an assumed placeholder until task 005 measures the real
- * Gemini watermark on a downloaded Flow image (16:9/9:16, 1K/2K) and records it as a named
- * constant in `be/.claude/rules/flow-automation.md` (video.md).
  */
 export interface LogoBox {
   x: number;
@@ -45,12 +42,19 @@ export interface ViewportRect {
   height: number;
 }
 
-/** Assumed placeholder box: bottom-right corner, 22% wide, 10% tall of the source image. */
+/** Measured live (task 005, 2026-09-17) from a real Flow-generated image, 16:9, native
+ * 1376x768: the Gemini sparkle watermark's diamond + comet-tail sits inside the bottom-right
+ * corner, roughly x:[996,1311] y:[653,688]px — this box (x:0.66, y:0.74, covering the remaining
+ * 34%x26%) adds a comfortable safety margin around that measured extent rather than a tight
+ * pixel-exact crop, since erring generous costs a little extra Ken Burns zoom but erring tight
+ * risks a future Flow render nudging the watermark a few pixels outside a razor-thin box.
+ * **Still assumed for 9:16** (no real 9:16 image measured yet) — reused here as the working
+ * default until a 9:16 image is measured the same way; update this doc comment when it is. */
 export const ASSUMED_LOGO_BOX: LogoBox = {
-  x: 0.78,
-  y: 0.9,
-  width: 0.22,
-  height: 0.1,
+  x: 0.66,
+  y: 0.74,
+  width: 0.34,
+  height: 0.26,
 };
 
 /** How much extra the Ken Burns zoom-in adds on top of the minimum safe zoom, over the scene's

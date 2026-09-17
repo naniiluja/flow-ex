@@ -8,6 +8,7 @@ import path from "node:path";
 import pino from "pino";
 
 import { createFakeImageProvider } from "../providers/fake/fake-image-provider.ts";
+import { createFakeTranscriptionProvider } from "../providers/fake/fake-transcription-provider.ts";
 import { createFakeTtsProvider } from "../providers/fake/fake-tts-provider.ts";
 import { createProjectStore } from "../store/project-store.ts";
 import { createPipelineEngine } from "./pipeline-engine.ts";
@@ -27,6 +28,7 @@ const engine = createPipelineEngine({
   store,
   imageProvider: createFakeImageProvider({ assetsDir, delayMsForScene }),
   ttsProvider: createFakeTtsProvider({ assetsDir }),
+  transcriptionProvider: createFakeTranscriptionProvider({ assetsDir }),
   baseLogger: pino({ level: "silent" }),
   retryScheduleMs: [],
   jitter: (ms) => ms,
