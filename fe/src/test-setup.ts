@@ -18,6 +18,24 @@ class InertEventSource {
 }
 vi.stubGlobal("EventSource", InertEventSource);
 
+// jsdom has no `matchMedia` implementation either; the shadcn sidebar's `useIsMobile` hook
+// (fe/src/hooks/use-mobile.ts) calls it on every mount, so any test mounting `AppShell` (or
+// anything nested in a `SidebarProvider`) needs this benign stub, same reasoning as EventSource
+// above — no test here exercises real responsive behavior.
+vi.stubGlobal(
+  "matchMedia",
+  vi.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+);
+
 afterEach(() => {
   cleanup();
 });

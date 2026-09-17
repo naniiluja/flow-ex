@@ -3,7 +3,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import pino from "pino";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScriptInput } from "@flow-ex/shared-schemas";
 
@@ -96,5 +97,93 @@ describe("createProjectStore", () => {
         error.errorKind === "transient"
       );
     });
+  });
+});
+
+describe("createProjectStore.list", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "flow-ex-project-store-list-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("returns [] for an empty projectsRoot (EP: no projects)", async () => {
+    const store = createProjectStore(root);
+    await expect(store.list()).resolves.toEqual([]);
+  });
+
+  it("returns [] when projectsRoot itself does not exist yet (BVA: nothing ever created)", async () => {
+    const store = createProjectStore(path.join(root, "does-not-exist"));
+    await expect(store.list()).resolves.toEqual([]);
+  });
+
+  it("returns a lightweight summary for one valid project (EP: single project, no scenes[] leak)", async () => {
+    const store = createProjectStore(root);
+    const created = await store.create(validInput);
+
+    const summaries = await store.list();
+    expect(summaries).toEqual([
+      {
+        id: created.id,
+        title: created.title,
+        runStatus: "idle",
+        createdAt: created.createdAt,
+        sceneCount: 1,
+        doneSceneCount: 0,
+        outputFile: undefined,
+      },
+    ]);
+    expect(summaries[0]).not.toHaveProperty("scenes");
+  });
+
+  it("skips a folder with no project.json and logs a warn (EP: broken folder, no silent catch)", async () => {
+    const logger = pino({ level: "silent" });
+    const warnSpy = vi.spyOn(logger, "warn");
+    const store = createProjectStore(root, logger);
+
+    await fs.mkdir(path.join(root, "not-a-project"), { recursive: true });
+    await store.create(validInput);
+
+    const summaries = await store.list();
+    expect(summaries).toHaveLength(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "not-a-project" }),
+      "project.list.skip",
+    );
+  });
+
+  it("skips a folder with corrupt project.json and logs a warn (EP: corrupt JSON)", async () => {
+    const logger = pino({ level: "silent" });
+    const warnSpy = vi.spyOn(logger, "warn");
+    const store = createProjectStore(root, logger);
+
+    const corruptId = "corrupt-project";
+    await fs.mkdir(path.join(root, corruptId), { recursive: true });
+    await fs.writeFile(path.join(root, corruptId, "project.json"), "{not valid json");
+    await store.create(validInput);
+
+    const summaries = await store.list();
+    expect(summaries).toHaveLength(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: corruptId }),
+      "project.list.skip",
+    );
+  });
+
+  it("orders 3 projects by createdAt descending (BVA: many projects, ordering boundary)", async () => {
+    const store = createProjectStore(root);
+    const first = await store.create(validInput);
+    await store.update(first.id, (p) => ({ ...p, createdAt: "2020-01-01T00:00:00.000Z" }));
+    const second = await store.create(validInput);
+    await store.update(second.id, (p) => ({ ...p, createdAt: "2021-01-01T00:00:00.000Z" }));
+    const third = await store.create(validInput);
+    await store.update(third.id, (p) => ({ ...p, createdAt: "2022-01-01T00:00:00.000Z" }));
+
+    const summaries = await store.list();
+    expect(summaries.map((s) => s.id)).toEqual([third.id, second.id, first.id]);
   });
 });
