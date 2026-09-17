@@ -11,6 +11,10 @@ export default tseslint.config(
       "chrome-profile/**",
       "projects/**",
       "logs/**",
+      // whisper.cpp's own source, downloaded at runtime by `@remotion/install-whisper-cpp`
+      // (task 007, `WHISPER_CACHE_DIR`, default `./.whisper-cache`) the first time a real
+      // transcribe runs — not code this repo owns, and its own JS predates our parser config.
+      "**/.whisper-cache/**",
     ],
   },
   ...tseslint.configs.strictTypeChecked,

@@ -97,6 +97,14 @@ export function buildApp(options: BuildAppOptions) {
     reply.code(500).send({ error: { code: "INTERNAL_ERROR", message: "Internal error" } });
   });
 
+  // `@fastify/static`'s own `reply.sendFile`/`reply.callNotFound()` (used by both
+  // `routes/project-assets.ts` routes) answers a missing file with Fastify's DEFAULT 404 body
+  // (`{message, error, statusCode}`), which leaks the internal route path and does not match
+  // ../.claude/rules/api-design.md's `{ error: { code, message } }` shape everywhere else.
+  fastify.setNotFoundHandler((_request, reply) => {
+    reply.code(404).send({ error: { code: "NOT_FOUND", message: "Not found" } });
+  });
+
   const baseLogger = options.loggerInstance ?? pino({ level: "silent" });
   const eventBus = options.eventBus ?? createPipelineEventBus();
   // One `ImageProvider` per project, shared between `renderRoutes` and `scenesRoutes`

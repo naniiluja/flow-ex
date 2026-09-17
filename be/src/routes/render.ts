@@ -48,6 +48,14 @@ export interface RenderRouteOptions {
  * (../../.claude/rules/architecture.md provider/strategy pattern). */
 const renderRoutes: FastifyPluginCallback<RenderRouteOptions> = (fastify, opts, done) => {
   const app = fastify.withTypeProvider<ZodTypeProvider>();
+  // Tracks runs genuinely in flight IN THIS PROCESS, separate from `project.runStatus` on disk.
+  // `runStatus: "running"` alone is not a reliable duplicate-run guard: a crashed/restarted
+  // process leaves it "running" forever with no live run behind it, and `pipeline-engine.ts`'s
+  // own resume logic (its `runId` reuse for `runStatus === "running"`) is BUILT to let a fresh
+  // `run()` call pick that project back up — a persisted-status-only guard blocked exactly the
+  // resume the engine was designed to support. This set is empty on every fresh process start,
+  // so a project orphaned by a restart becomes callable again without a manual `project.json` edit.
+  const activeRuns = new Set<string>();
 
   app.post(
     "/api/projects/:id/render",
@@ -57,7 +65,7 @@ const renderRoutes: FastifyPluginCallback<RenderRouteOptions> = (fastify, opts, 
       // 404s up front (via store.read's own AppError) instead of failing asynchronously inside
       // the background run, where nothing in this request would observe it.
       const project = await opts.store.read(id);
-      if (project.runStatus === "running") {
+      if (activeRuns.has(id)) {
         throw new AppError({
           code: "PIPELINE_ALREADY_RUNNING",
           errorKind: "needs_user",
@@ -98,9 +106,15 @@ const renderRoutes: FastifyPluginCallback<RenderRouteOptions> = (fastify, opts, 
         eventBus: opts.eventBus,
       });
 
-      engine.run(id).catch((error: unknown) => {
-        opts.baseLogger.error({ err: error, projectId: id }, "pipeline.run.unhandled_rejection");
-      });
+      activeRuns.add(id);
+      engine
+        .run(id)
+        .catch((error: unknown) => {
+          opts.baseLogger.error({ err: error, projectId: id }, "pipeline.run.unhandled_rejection");
+        })
+        .finally(() => {
+          activeRuns.delete(id);
+        });
 
       reply.code(202);
       return { status: "started" };

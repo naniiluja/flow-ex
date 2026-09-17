@@ -56,12 +56,17 @@ describe("GET /api/projects/:id/assets/*", () => {
     expect(response.rawPayload).toEqual(Buffer.from([1, 2, 3, 4]));
   });
 
-  it("returns 404 for a file that does not exist under the project's assets folder", async () => {
+  it("returns 404 for a file that does not exist under the project's assets folder, in the standard error shape", async () => {
     const response = await app.inject({
       method: "GET",
       url: `/api/projects/${projectId}/assets/images/missing.png`,
     });
     expect(response.statusCode).toBe(404);
+    // `@fastify/static`'s own `reply.callNotFound()` reaches `app.ts`'s `setNotFoundHandler`,
+    // which must answer with ../.claude/rules/api-design.md's `{ error: { code, message } }`
+    // shape (never Fastify's default `{message, error, statusCode}`, which also leaks the
+    // internal route path).
+    expect(JSON.parse(response.body)).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
   it("rejects a plain '..' traversal attempt (collapsed by URL normalization, never reaching the project's files)", async () => {
@@ -103,5 +108,49 @@ describe("GET /api/projects/:id/assets/*", () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.rawPayload).toEqual(Buffer.from([9, 9, 9, 9]));
+  });
+});
+
+/**
+ * Contract-level EP/BVA matrix for `GET /api/projects/:id/output` (the finished `output.mp4`,
+ * which lives at the project's ROOT, not under `assets/**` — see the route's own comment on why
+ * it is a NAMED route rather than a wildcard mounted at the project root).
+ *
+ * | project state                          | Expected                        |
+ * | ----------------------------------------- | ---------------------------------- |
+ * | output.mp4 exists at the project root     | 200, CORS header, matching bytes |
+ * | project has no output.mp4 yet (not rendered) | 404                             |
+ */
+describe("GET /api/projects/:id/output", () => {
+  let root: string;
+  let app: ReturnType<typeof buildApp>;
+  const projectId = randomUUID();
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "flow-ex-project-output-"));
+    await fs.mkdir(path.join(root, projectId), { recursive: true });
+    await fs.writeFile(path.join(root, projectId, "output.mp4"), Buffer.from([5, 6, 7, 8]));
+    app = buildApp({ store: createProjectStore(root) });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("serves the project's output.mp4 with a permissive CORS header", async () => {
+    const response = await app.inject({ method: "GET", url: `/api/projects/${projectId}/output` });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["access-control-allow-origin"]).toBe("*");
+    expect(response.rawPayload).toEqual(Buffer.from([5, 6, 7, 8]));
+  });
+
+  it("returns 404 for a project that has not rendered an output.mp4 yet, in the standard error shape", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/projects/${randomUUID()}/output`,
+    });
+    expect(response.statusCode).toBe(404);
+    expect(JSON.parse(response.body)).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 });

@@ -64,6 +64,12 @@ export function useProjectEvents(projectId: string | undefined): { logLines: Log
         scenes[payload.sceneIndex] = { ...scene, status: payload.status };
         return { ...current, scenes };
       });
+      // A `scene` event only ever carries that ONE scene's status; `project.runStatus`/
+      // `outputFile` (which flip once EVERY scene clears, ../../be/.claude/rules/api-design.md)
+      // never get patched by the line above, so the UI (e.g. the render button's label, the
+      // Video tab) can go stale for the rest of the run without this. Cheap: at most one event
+      // per scene per stage, never per log line.
+      void queryClient.invalidateQueries({ queryKey: ["project", projectId] });
     });
 
     source.addEventListener("log", (event) => {

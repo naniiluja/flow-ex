@@ -51,6 +51,8 @@ Phát hiện và đã sửa ngay trong session:
 
 Chưa làm (không phải bug, để lại có chủ đích): dọn file biến thể không được chọn trên đĩa (danh sách `imageVariants` tăng không giới hạn qua nhiều lần "Sinh lại"). Cân nhắc lại khi tải 2K được thêm vào, vì lúc đó cách đặt tên file cần thiết kế lại một lần cho cả hai nhu cầu.
 
+**Bổ sung sau, trong lúc đóng task 007 (2026-09-17):** thêm nút "Duyệt tất cả (N)" trên `ProjectReviewPage` — duyệt tuần tự (một request một lúc, không đồng thời) mọi cảnh còn `awaiting_review` bằng biến thể mặc định hiện tại, tái dùng đúng `useApproveScene` đã có, không route BE mới. Lý do: một kịch bản 18 cảnh khiến việc bấm "Duyệt" từng cảnh một trở nên phi thực tế; tuần tự (không phải `Promise.all`) vì mọi request vẫn xếp hàng sau cùng 1 khoá ghi mỗi-project (`data-layer.md`) nên chạy đồng thời không nhanh hơn, còn tuần tự giữ được đúng 1 lỗi rõ ràng (dừng ở cảnh nào) thay vì 18 request đua vào 1 thông báo.
+
 ## Ghi chú / nguồn best-practice
 
 Xem quyết định "Duyệt ảnh bằng công tắc" trong lịch sử phỏng vấn `/ccf:init`.

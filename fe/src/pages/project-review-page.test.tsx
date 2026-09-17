@@ -80,7 +80,7 @@ describe("ProjectReviewPage", () => {
     renderAt(project.id);
 
     await waitFor(() => expect(screen.getAllByRole("img")).toHaveLength(2));
-    expect(screen.getAllByRole("button", { name: /Duyệt/i })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Duyệt" })).toHaveLength(2);
   });
 
   it("keeps the Render button disabled while any scene is still awaiting_review", async () => {
@@ -102,14 +102,41 @@ describe("ProjectReviewPage", () => {
     vi.spyOn(apiClient, "approveScene").mockResolvedValue({ ...project, scenes: approvedScenes });
 
     renderAt(project.id);
-    await waitFor(() => expect(screen.getAllByRole("button", { name: /Duyệt/i })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Duyệt" })).toHaveLength(2));
 
-    const firstApprove = screen.getAllByRole("button", { name: /Duyệt/i })[0];
+    const firstApprove = screen.getAllByRole("button", { name: "Duyệt" })[0];
     if (firstApprove === undefined) throw new Error("expected at least one Duyệt button");
     fireEvent.click(firstApprove);
 
-    await waitFor(() => expect(screen.getAllByRole("button", { name: /Duyệt/i })).toHaveLength(1));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Duyệt" })).toHaveLength(1));
     expect(apiClient.approveScene).toHaveBeenCalledWith(project.id, 0, 0);
+  });
+
+  it('"Duyệt tất cả" approves every awaiting_review scene one request at a time', async () => {
+    const project = makeProject();
+    vi.spyOn(apiClient, "getProject").mockResolvedValue(project);
+    // Builds the mocked response CUMULATIVELY off the current scenes array (not the original
+    // `project` snapshot) — otherwise the second approve's mocked response would revert the
+    // first scene back to awaiting_review, and the page would never converge.
+    let currentScenes = project.scenes;
+    const approveSceneSpy = vi
+      .spyOn(apiClient, "approveScene")
+      .mockImplementation((_id, sceneIndex) => {
+        currentScenes = currentScenes.map((scene, index) =>
+          index === sceneIndex ? { ...scene, status: "generating_audio" as const } : scene,
+        );
+        return Promise.resolve({ ...project, scenes: currentScenes });
+      });
+
+    renderAt(project.id);
+    await waitFor(() => expect(screen.getAllByRole("img")).toHaveLength(2));
+
+    fireEvent.click(screen.getByRole("button", { name: /Duyệt tất cả/ }));
+
+    await waitFor(() => expect(screen.getByText(/Đã duyệt xong toàn bộ cảnh/)).toBeInTheDocument());
+    expect(approveSceneSpy).toHaveBeenCalledTimes(2);
+    expect(approveSceneSpy).toHaveBeenNthCalledWith(1, project.id, 0, undefined);
+    expect(approveSceneSpy).toHaveBeenNthCalledWith(2, project.id, 1, undefined);
   });
 
   it("enables Render and triggers startRender once every scene is approved", async () => {
@@ -137,9 +164,9 @@ describe("ProjectReviewPage", () => {
     );
 
     renderAt(project.id);
-    await waitFor(() => expect(screen.getAllByRole("button", { name: /Duyệt/i })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Duyệt" })).toHaveLength(2));
 
-    const firstApprove = screen.getAllByRole("button", { name: /Duyệt/i })[0];
+    const firstApprove = screen.getAllByRole("button", { name: "Duyệt" })[0];
     if (firstApprove === undefined) throw new Error("expected at least one Duyệt button");
     fireEvent.click(firstApprove);
 

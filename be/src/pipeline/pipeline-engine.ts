@@ -14,13 +14,13 @@ import type {
 } from "../domain/providers.ts";
 import { isRetryableError } from "../domain/should-retry.ts";
 import { appendNdjsonLine } from "../logging/ndjson-file.ts";
+import { OUTPUT_FILE_NAME } from "../store/project-paths.ts";
 import type { ProjectStore } from "../store/project-store.ts";
 import type { PipelineEventBus } from "./pipeline-events.ts";
 import { retryWithSchedule } from "./retry-with-schedule.ts";
 import { advanceScene, type SceneEvent } from "./scene-state-machine.ts";
 
 const DEFAULT_SCHEDULE_MS = [30_000, 120_000, 300_000] as const;
-const OUTPUT_FILE_NAME = "output.mp4";
 
 function defaultJitter(delayMs: number): number {
   return delayMs + Math.random() * delayMs * 0.1;

@@ -6,12 +6,14 @@ import type { FastifyPluginCallback } from "fastify";
 import { z } from "zod";
 
 import { AppError } from "../domain/app-error.ts";
+import { OUTPUT_FILE_NAME } from "../store/project-paths.ts";
 
 export interface ProjectAssetsRouteOptions {
   projectsRoot: string;
 }
 
 const paramsSchema = z.object({ id: z.uuid(), "*": z.string() });
+const outputParamsSchema = z.object({ id: z.uuid() });
 
 /** Serves a project's generated images/audio over HTTP so the Player and the SSR renderer see
  * identical bytes (../../.claude/rules/video.md). Deliberately scoped to `<id>/assets/**` only
@@ -44,6 +46,19 @@ const projectAssetsRoutes: FastifyPluginCallback<ProjectAssetsRouteOptions> = (
     reply.header("Access-Control-Allow-Origin", "*");
     return reply.sendFile(path.relative(opts.projectsRoot, resolved));
   });
+
+  // A NAMED single-file route (never a wildcard) on purpose: `output.mp4` lives at the
+  // project's ROOT, alongside `project.json`/`logs/**` (../.claude/rules/data-layer.md) — a
+  // wildcard mounted at the project root to serve this one file would also serve those two.
+  app.get(
+    "/api/projects/:id/output",
+    { schema: { params: outputParamsSchema } },
+    (request, reply) => {
+      const { id } = request.params;
+      reply.header("Access-Control-Allow-Origin", "*");
+      return reply.sendFile(path.join(id, OUTPUT_FILE_NAME));
+    },
+  );
 
   done();
 };

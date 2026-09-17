@@ -40,12 +40,21 @@ export function useRegenerateScene(projectId: string | undefined) {
 }
 
 export function useStartRender(projectId: string | undefined) {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => {
       if (projectId === undefined) {
         throw new Error("useStartRender: no projectId");
       }
       return startRender(projectId);
+    },
+    // `startRender` returns no body (202, ../../be/.claude/rules/api-design.md), so the cache
+    // can't be patched directly like `approve`/`regenerate` above — refetch instead. Without
+    // this, `project.runStatus` stays whatever it was before the click (e.g. "idle") until an
+    // unrelated SSE `scene` event happens to refetch it, so the button/label the UI just showed
+    // stays stale right after the very action that was supposed to change it.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["project", projectId] });
     },
   });
 }

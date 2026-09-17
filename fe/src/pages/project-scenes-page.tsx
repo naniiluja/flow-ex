@@ -4,10 +4,12 @@ import type { SceneStatus } from "@flow-ex/shared-schemas";
 
 import { ProjectLogTab } from "../components/project-log-tab";
 import { SceneAudioPreview } from "../components/scene-audio-preview";
+import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useProject } from "../hooks/use-project";
 import { useProjectEvents } from "../hooks/use-project-events";
+import { useStartRender } from "../hooks/use-scene-review";
 
 const STATUS_LABEL: Record<SceneStatus, string> = {
   pending: "Chờ xử lý",
@@ -25,6 +27,7 @@ export function ProjectScenesPage() {
   // Only open the SSE stream once the project has actually loaded — an unknown/failed id would
   // otherwise hold a connection open behind an error screen with nothing to show for it.
   const { logLines } = useProjectEvents(project ? id : undefined);
+  const startRender = useStartRender(id);
 
   if (isLoading) {
     return <main className="p-6 text-sm text-muted-foreground">Đang tải dự án...</main>;
@@ -37,21 +40,64 @@ export function ProjectScenesPage() {
 
   return (
     <main className="mx-auto max-w-2xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-medium">{project.title}</h1>
-        {project.scenes.some((scene) => scene.status === "awaiting_review") && (
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
           <Link
-            to={`/projects/${project.id}/review`}
+            to="/"
             className="text-sm font-medium text-primary underline-offset-4 hover:underline"
           >
-            Duyệt ảnh
+            {"← Dự án mới"}
           </Link>
-        )}
+          <h1 className="text-lg font-medium">{project.title}</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          {(project.runStatus === "awaiting_review" ||
+            project.scenes.some((scene) => scene.status === "awaiting_review")) && (
+            // Gated on BOTH: `runStatus` catches the case where every scene has already been
+            // approved (no scene is individually "awaiting_review" anymore) but the run itself
+            // hasn't been re-triggered yet — without this half, leaving the review page before
+            // clicking "Render" strands the project with no link back to it (a real dead end
+            // caught by /ccf:check's task 007 review). The per-scene check stays too, for the
+            // normal case of arriving here mid-review before anything is approved.
+            <Link
+              to={`/projects/${project.id}/review`}
+              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Duyệt ảnh
+            </Link>
+          )}
+          {(project.runStatus === "idle" ||
+            project.runStatus === "failed" ||
+            project.runStatus === "running" ||
+            project.runStatus === "awaiting_review") && (
+            <Button
+              type="button"
+              size="sm"
+              disabled={startRender.isPending}
+              onClick={() => startRender.mutate()}
+            >
+              {project.runStatus === "failed"
+                ? "Chạy lại"
+                : project.runStatus === "running" || project.runStatus === "awaiting_review"
+                  ? "Tiếp tục"
+                  : "Bắt đầu dựng video"}
+            </Button>
+          )}
+          {project.runStatus === "completed" && project.outputFile !== undefined && (
+            <span className="text-sm text-muted-foreground">Đã dựng xong — xem ở tab "Video"</span>
+          )}
+        </div>
       </div>
+      {startRender.error && (
+        <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {startRender.error.message}
+        </p>
+      )}
       <Tabs defaultValue="scenes">
         <TabsList>
           <TabsTrigger value="scenes">Cảnh</TabsTrigger>
           <TabsTrigger value="log">Log</TabsTrigger>
+          <TabsTrigger value="video">Video</TabsTrigger>
         </TabsList>
         <TabsContent value="scenes">
           <div className="flex flex-col gap-3" data-testid="scene-list">
@@ -80,6 +126,18 @@ export function ProjectScenesPage() {
         </TabsContent>
         <TabsContent value="log">
           <ProjectLogTab logLines={logLines} />
+        </TabsContent>
+        <TabsContent value="video">
+          {project.runStatus === "completed" && project.outputFile !== undefined ? (
+            <video
+              controls
+              aria-label={`Video đã dựng: ${project.title}`}
+              className="w-full rounded-md"
+              src={`/api/projects/${project.id}/output`}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">Video chưa dựng xong.</p>
+          )}
         </TabsContent>
       </Tabs>
     </main>

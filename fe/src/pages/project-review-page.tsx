@@ -1,4 +1,5 @@
-import { useNavigate, useParams } from "react-router";
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
 
 import { SceneVariantPicker } from "../components/scene-variant-picker";
 import { Button } from "../components/ui/button";
@@ -21,6 +22,7 @@ export function ProjectReviewPage() {
   const approveScene = useApproveScene(id);
   const regenerateScene = useRegenerateScene(id);
   const startRender = useStartRender(id);
+  const [isApprovingAll, setIsApprovingAll] = useState(false);
 
   // Only the LATEST mutation's own error should stay visible — without this, an approve
   // failure lingers on screen even after a later regenerate succeeds, since each `useMutation`
@@ -41,8 +43,29 @@ export function ProjectReviewPage() {
     return <main className="p-6 text-sm text-destructive">{`Không tải được dự án${suffix}.`}</main>;
   }
 
-  const scenesAwaitingReview = project.scenes.filter((scene) => scene.status === "awaiting_review");
-  const everySceneApproved = scenesAwaitingReview.length === 0;
+  const sceneIndicesAwaitingReview = project.scenes
+    .map((scene, index) => ({ scene, index }))
+    .filter(({ scene }) => scene.status === "awaiting_review")
+    .map(({ index }) => index);
+  const everySceneApproved = sceneIndicesAwaitingReview.length === 0;
+
+  // Approves every awaiting_review scene with its CURRENT default variant, one request at a
+  // time — sequential rather than firing all 18 at once, since they all queue behind the same
+  // per-project write lock anyway (data-layer.md) and a sequential loop keeps a single, honest
+  // error surfaced (which scene it stopped at) instead of 18 requests racing into one message.
+  async function handleApproveAll(): Promise<void> {
+    resetOtherErrors("approve");
+    setIsApprovingAll(true);
+    try {
+      for (const sceneIndex of sceneIndicesAwaitingReview) {
+        await approveScene.mutateAsync({ sceneIndex });
+      }
+    } catch {
+      // approveScene.error already holds the failure for the banner above; stop the loop here.
+    } finally {
+      setIsApprovingAll(false);
+    }
+  }
   // A `needs_user`/`fatal` error from any of the three mutations must SURFACE, not vanish behind
   // a button that just goes back to enabled (../.claude/rules/error-handling.md's "needs_user:
   // stop the run and surface it in the UI/log"; ../.claude/rules/state-management.md's "an inline
@@ -51,22 +74,46 @@ export function ProjectReviewPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-medium">Duyệt ảnh — {project.title}</h1>
-        <Button
-          type="button"
-          disabled={!everySceneApproved || startRender.isPending}
-          onClick={() => {
-            resetOtherErrors("render");
-            startRender.mutate(undefined, {
-              onSuccess: () => {
-                void navigate(`/projects/${project.id}`);
-              },
-            });
-          }}
-        >
-          Render
-        </Button>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link
+            to={`/projects/${project.id}`}
+            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+          >
+            {"← Cảnh"}
+          </Link>
+          <h1 className="text-lg font-medium">Duyệt ảnh — {project.title}</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          {!everySceneApproved && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isApprovingAll}
+              onClick={() => {
+                void handleApproveAll();
+              }}
+            >
+              {isApprovingAll
+                ? "Đang duyệt..."
+                : `Duyệt tất cả (${String(sceneIndicesAwaitingReview.length)})`}
+            </Button>
+          )}
+          <Button
+            type="button"
+            disabled={!everySceneApproved || startRender.isPending}
+            onClick={() => {
+              resetOtherErrors("render");
+              startRender.mutate(undefined, {
+                onSuccess: () => {
+                  void navigate(`/projects/${project.id}`);
+                },
+              });
+            }}
+          >
+            Render
+          </Button>
+        </div>
       </div>
 
       {mutationError && (

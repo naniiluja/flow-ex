@@ -150,7 +150,7 @@ describe("POST /api/projects/:id/render (e2e)", () => {
     expect(stat.size).toBeGreaterThan(0);
   }, 90_000);
 
-  it("rejects a second render with 409 while one is already running on the same project", async () => {
+  it("rejects a second render with 409 while one is genuinely still running in this process", async () => {
     const created = await fetch(`${baseUrl}/api/projects`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -158,17 +158,61 @@ describe("POST /api/projects/:id/render (e2e)", () => {
     });
     const project = projectSchema.parse(await created.json());
 
-    // Seed runStatus: "running" directly (not via a real render) so this test stays fast and
-    // does not depend on winning a race against the background pipeline.
+    // Fire the first render for real, then immediately fire a second one before it can finish —
+    // the guard tracks runs actually in flight IN THIS PROCESS (an in-memory `Set`), not merely
+    // `project.runStatus === "running"` on disk: that persisted status alone is NOT a safe guard,
+    // since a crashed/restarted process would otherwise leave a project permanently unrenderable
+    // (see render.ts's own comment) even though pipeline-engine.ts's resume logic is built to
+    // pick a "running" project back up. So this test proves the REAL concurrency guard, not a
+    // seeded status.
+    const first = await fetch(`${baseUrl}/api/projects/${project.id}/render`, { method: "POST" });
+    expect(first.status).toBe(202);
+
+    const second = await fetch(`${baseUrl}/api/projects/${project.id}/render`, { method: "POST" });
+    expect(second.status).toBe(409);
+    const body = (await second.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("PIPELINE_ALREADY_RUNNING");
+
+    // Drain the first run so it doesn't leak into a later test.
+    const deadline = Date.now() + 60_000;
+    let finalProject = project;
+    while (finalProject.runStatus !== "completed" && finalProject.runStatus !== "failed") {
+      if (Date.now() > deadline) throw new Error("timed out waiting for the pipeline to finish");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const response = await fetch(`${baseUrl}/api/projects/${project.id}`);
+      finalProject = projectSchema.parse(await response.json());
+    }
+  }, 90_000);
+
+  it('allows re-render of a project whose runStatus is "running" with no matching entry in activeRuns (crash-resume, not blocked by stale persisted state)', async () => {
+    const created = await fetch(`${baseUrl}/api/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(SCRIPT),
+    });
+    const project = projectSchema.parse(await created.json());
+
+    // Seed runStatus: "running" with no live run behind it, directly on disk (bypassing a real
+    // run() call) to stand in for what a process restart leaves behind — a real restart is
+    // exercised separately by `pipeline-resume-process-kill.test.ts`, closer to the pipeline
+    // engine than this route-level test. This app instance's own `activeRuns` set was never
+    // populated for this project.id, so the guard must accept the request regardless.
     const store = createProjectStore(root);
     await store.update(project.id, (p) => ({ ...p, runStatus: "running" }));
 
     const response = await fetch(`${baseUrl}/api/projects/${project.id}/render`, {
       method: "POST",
     });
+    expect(response.status).toBe(202);
 
-    expect(response.status).toBe(409);
-    const body = (await response.json()) as { error: { code: string } };
-    expect(body.error.code).toBe("PIPELINE_ALREADY_RUNNING");
-  });
+    const deadline = Date.now() + 60_000;
+    let finalProject = project;
+    while (finalProject.runStatus !== "completed" && finalProject.runStatus !== "failed") {
+      if (Date.now() > deadline) throw new Error("timed out waiting for the pipeline to finish");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const response2 = await fetch(`${baseUrl}/api/projects/${project.id}`);
+      finalProject = projectSchema.parse(await response2.json());
+    }
+    expect(finalProject.runStatus).toBe("completed");
+  }, 90_000);
 });
