@@ -4,6 +4,30 @@ paths: ["video/**"]
 
 # Video Composition (Remotion)
 
+## Presets (task 009): `aspectRatio` vs `preset`
+
+- `packages/shared-schemas/src/presets.ts`'s `PRESETS` table (`tiktok` | `youtube`) is the SINGLE
+  source of truth for frame dimensions, caption style (`fontSize`/`fontWeight`/
+  `paddingBottomPercent`/`combineTokensWithinMs`), the Vbee TTS `speed` default, and suggested
+  duration/scene-count — never re-derived ad hoc elsewhere.
+- **Decision: an explicit `aspectRatio` on the project WINS over the preset's own default.**
+  `scriptInputSchema` (`packages/shared-schemas/src/index.ts`) makes `aspectRatio` optional and
+  requires at least one of `preset`/`aspectRatio`; when only `aspectRatio` is given, `preset` is
+  INFERRED from it (`inferPresetFromAspectRatio`: `"9:16"` -> `"tiktok"`, anything else ->
+  `"youtube"`). `resolveAspectRatio({preset, aspectRatio})` is the one function that applies the
+  "explicit wins" rule for the FRAME dimensions — `video/src/compositions/main-composition.tsx`'s
+  `computeVideoMetadata` and `be/src/pipeline/pipeline-engine.ts`/`scene-review.ts`/
+  `create-remotion-video-renderer.ts` all call it rather than reading `project.aspectRatio`
+  directly. `resolveTtsSpeed`/`resolveTtsOptionsForProject`
+  (`be/src/providers/select-providers.ts`) apply the SAME rule to the Vbee `speed` field: an
+  explicit `tts.speed` wins, an unset one falls back to the preset's default.
+- `MainCompositionProps.preset` is used ONLY for caption style (`TikTokCaptions`'s
+  `captionStyle` prop, sourced from `PRESETS[preset].captionStyle`) — never to re-derive the frame
+  dimensions once `aspectRatio` has already been resolved.
+- `packages/shared-schemas`'s `migrateProjectJson` lazily upgrades a `schemaVersion: 1`
+  `project.json` (predates `preset`) by inferring `preset` from its existing `aspectRatio`, run on
+  every `be/src/store/project-store.ts` read before `projectSchema.safeParse`.
+
 ## Version discipline
 
 - Remotion 4.0.525, pinned exactly (no `^`) for every `remotion` / `@remotion/*` package. A version mismatch between these packages is a documented source of runtime failure.

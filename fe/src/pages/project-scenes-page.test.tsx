@@ -36,8 +36,9 @@ function makeProject(
     title: "Du an test",
     voice: "hn_female_ngochuyen_full_48k-fhg",
     aspectRatio: "16:9",
+    preset: "youtube",
     reviewEnabled: false,
-    schemaVersion: 1,
+    schemaVersion: 2,
     createdAt: new Date().toISOString(),
     runStatus: "idle",
     scenes: scenes.map(({ status, ...scene }) => ({

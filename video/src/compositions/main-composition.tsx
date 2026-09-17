@@ -5,6 +5,13 @@ import type { CalculateMetadataFunction } from "remotion";
 import { AbsoluteFill, Img, useCurrentFrame, useVideoConfig } from "remotion";
 import React from "react";
 
+import {
+  PRESETS,
+  resolveAspectRatio,
+  type AspectRatio,
+  type Preset,
+} from "@flow-ex/shared-schemas";
+
 import { TikTokCaptions } from "../captions/tiktok-captions.tsx";
 import { sceneFramesForTimeline, totalTimelineDurationInFrames } from "../timing/scene-duration.ts";
 import {
@@ -30,7 +37,13 @@ export interface RenderableScene {
 
 export interface MainCompositionProps extends Record<string, unknown> {
   scenes: RenderableScene[];
-  aspectRatio: "16:9" | "9:16";
+  /** Optional (task 009): when given, WINS over the preset's own default frame dimensions
+   * (../../.claude/rules/video.md's recorded "aspectRatio vs preset" decision); when omitted, the
+   * frame size is the preset's own `PRESETS[preset]` dimensions. */
+  aspectRatio?: "16:9" | "9:16";
+  /** Drives caption style (`PRESETS[preset].captionStyle`, `@flow-ex/shared-schemas`) and,
+   * absent an explicit `aspectRatio`, the frame dimensions too. */
+  preset: Preset;
 }
 
 const FPS = 30;
@@ -47,7 +60,7 @@ function createTransitionTiming() {
  * duration from what `TransitionSeries` actually renders, leaving several trailing frames blank. */
 const TRANSITION_FRAMES = createTransitionTiming().getDurationInFrames({ fps: FPS });
 
-const DIMENSIONS: Record<MainCompositionProps["aspectRatio"], { width: number; height: number }> = {
+const DIMENSIONS: Record<AspectRatio, { width: number; height: number }> = {
   "16:9": { width: 1920, height: 1080 },
   "9:16": { width: 1080, height: 1920 },
 };
@@ -64,7 +77,7 @@ export interface VideoMetadata {
  * calls the EXACT SAME `sceneFramesForTimeline` helper that `MainComposition` uses to assign each
  * `Sequence`'s `durationInFrames`, so the two can never compute a different total. */
 export function computeVideoMetadata(props: MainCompositionProps): VideoMetadata {
-  const { width, height } = DIMENSIONS[props.aspectRatio];
+  const { width, height } = DIMENSIONS[resolveAspectRatio(props)];
   const sceneFrames = sceneFramesForTimeline(props.scenes, FPS, TRANSITION_FRAMES);
   const transitionFramesBetweenScenes = new Array(Math.max(0, props.scenes.length - 1)).fill(
     TRANSITION_FRAMES,
@@ -129,7 +142,8 @@ function KenBurnsImage({
   );
 }
 
-export function MainComposition({ scenes }: MainCompositionProps): React.ReactElement {
+export function MainComposition({ scenes, preset }: MainCompositionProps): React.ReactElement {
+  const captionStyle = PRESETS[preset].captionStyle;
   const sceneFrames = sceneFramesForTimeline(scenes, FPS, TRANSITION_FRAMES);
   // sceneFrames has exactly one entry per scene (it's a .map over this same `scenes` array), so
   // zipping them together here can never actually hit the undefined branch — it exists only to
@@ -154,7 +168,7 @@ export function MainComposition({ scenes }: MainCompositionProps): React.ReactEl
             />
             <Audio src={scene.audioUrl} />
             {scene.captions !== undefined && scene.captions.length > 0 && (
-              <TikTokCaptions captions={scene.captions} />
+              <TikTokCaptions captions={scene.captions} captionStyle={captionStyle} />
             )}
           </TransitionSeries.Sequence>
           {index < scenes.length - 1 && (

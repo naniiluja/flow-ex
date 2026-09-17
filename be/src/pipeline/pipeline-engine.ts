@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { Logger } from "pino";
 
-import type { Project, ProjectScene } from "@flow-ex/shared-schemas";
+import { resolveAspectRatio, type Project, type ProjectScene } from "@flow-ex/shared-schemas";
 
 import { AppError } from "../domain/app-error.ts";
 import type {
@@ -222,7 +222,7 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
           options.imageProvider.generateImage(scene.imagePrompt, {
             projectId,
             sceneIndex,
-            aspectRatio: project.aspectRatio,
+            aspectRatio: resolveAspectRatio(project),
             logger: options.baseLogger.child({ projectId, runId, stage: "image" }),
           }),
         (image, current) => ({

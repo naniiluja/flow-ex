@@ -11,6 +11,7 @@ import { MAIN_COMPOSITION_ID } from "./composition-id.ts";
 const DEFAULT_PROPS: MainCompositionProps = {
   scenes: [],
   aspectRatio: "16:9",
+  preset: "youtube",
 };
 
 /** Registered with `bundle()`/`selectComposition()` (be/src/render/render-video.ts) and mounted

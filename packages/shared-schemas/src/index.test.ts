@@ -4,8 +4,10 @@ import {
   approveSceneBodySchema,
   captionSchema,
   captionsFileSchema,
+  migrateProjectJson,
   projectSceneParamsSchema,
   projectSceneSchema,
+  projectSchema,
   scriptInputSchema,
   ttsOptionsSchema,
 } from "./index.ts";
@@ -318,5 +320,90 @@ describe("ttsOptionsSchema", () => {
   it("rejects clientPause.majorBreak below its minimum (0.09)", () => {
     const result = ttsOptionsSchema.safeParse({ clientPause: { majorBreak: 0.09 } });
     expect(result.success).toBe(false);
+  });
+});
+
+/**
+ * Contract-level EP/BVA matrix for the preset↔aspectRatio interplay on scriptInputSchema.
+ *
+ * | preset given | aspectRatio given | Expected                                    |
+ * | ------------ | ------------------ | -------------------------------------------- |
+ * | "tiktok"     | none               | resolved preset "tiktok", aspectRatio undefined |
+ * | none         | "9:16"             | resolved preset inferred "tiktok"             |
+ * | "youtube"    | "9:16" (conflict)  | aspectRatio "9:16" kept as-is (explicit wins downstream via resolveAspectRatio) |
+ * | none         | none               | rejected — at least one required             |
+ * | "instagram"  | —                  | rejected — unknown preset                    |
+ */
+describe("scriptInputSchema preset/aspectRatio", () => {
+  const base = {
+    title: "Cau chuyen mua he",
+    voice: "hn_female_ngochuyen_full_48k-fhg",
+    scenes: [{ narration: "Xin chao", imagePrompt: "a sunny beach" }],
+  };
+
+  it("accepts preset alone and resolves it unchanged", () => {
+    const result = scriptInputSchema.parse({ ...base, preset: "tiktok" });
+    expect(result.preset).toBe("tiktok");
+    expect(result.aspectRatio).toBeUndefined();
+  });
+
+  it("accepts aspectRatio alone and infers the matching preset", () => {
+    const result = scriptInputSchema.parse({ ...base, aspectRatio: "9:16" });
+    expect(result.preset).toBe("tiktok");
+    expect(result.aspectRatio).toBe("9:16");
+  });
+
+  it("an explicit aspectRatio that conflicts with preset is kept as given (aspectRatio wins over preset)", () => {
+    const result = scriptInputSchema.parse({ ...base, preset: "youtube", aspectRatio: "9:16" });
+    expect(result.preset).toBe("youtube");
+    expect(result.aspectRatio).toBe("9:16");
+  });
+
+  it("rejects when neither preset nor aspectRatio is given", () => {
+    expect(scriptInputSchema.safeParse(base).success).toBe(false);
+  });
+
+  it("rejects an unknown preset value", () => {
+    expect(scriptInputSchema.safeParse({ ...base, preset: "instagram" }).success).toBe(false);
+  });
+});
+
+describe("migrateProjectJson", () => {
+  const oldProject = {
+    id: "11111111-1111-4111-8111-111111111111",
+    title: "Cau chuyen mua he",
+    voice: "hn_female_ngochuyen_full_48k-fhg",
+    aspectRatio: "9:16",
+    reviewEnabled: false,
+    schemaVersion: 1,
+    createdAt: new Date().toISOString(),
+    runStatus: "idle",
+    scenes: [
+      {
+        narration: "Xin chao",
+        imagePrompt: "beach",
+        status: "pending",
+        attempts: 0,
+        imageVariants: [],
+      },
+    ],
+  };
+
+  it("infers preset from a v1 project's own aspectRatio and bumps schemaVersion", () => {
+    const migrated = migrateProjectJson(oldProject) as Record<string, unknown>;
+    expect(migrated.preset).toBe("tiktok");
+    expect(migrated.schemaVersion).toBe(2);
+  });
+
+  it("a migrated v1 project.json validates against the CURRENT projectSchema", () => {
+    const migrated = migrateProjectJson(oldProject);
+    const parsed = projectSchema.parse(migrated);
+    expect(parsed.preset).toBe("tiktok");
+    expect(parsed.aspectRatio).toBe("9:16");
+  });
+
+  it("leaves an already-current project untouched", () => {
+    const current = { ...oldProject, schemaVersion: 2, preset: "youtube" };
+    expect(migrateProjectJson(current)).toEqual(current);
   });
 });

@@ -14,6 +14,7 @@ const validInput: ScriptInput = {
   title: "Cau chuyen mua he",
   voice: "hn_female_ngochuyen_full_48k-fhg",
   aspectRatio: "16:9",
+  preset: "youtube",
   reviewEnabled: false,
   scenes: [{ narration: "Xin chao", imagePrompt: "a sunny beach" }],
 };
@@ -40,10 +41,12 @@ describe("createProjectStore", () => {
     expect(read).toEqual(created);
   });
 
-  it("stamps a fresh project with schemaVersion 1 and a unique id", async () => {
+  it("stamps a fresh project with the current schemaVersion and a unique id", async () => {
     const a = await store.create(validInput);
     const b = await store.create(validInput);
-    expect(a.schemaVersion).toBe(1);
+    // Bumped 1 -> 2 in task 009 (see @flow-ex/shared-schemas's CURRENT_SCHEMA_VERSION doc
+    // comment).
+    expect(a.schemaVersion).toBe(2);
     expect(a.id).not.toBe(b.id);
   });
 

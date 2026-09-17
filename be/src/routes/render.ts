@@ -11,6 +11,7 @@ import type { ImageProvider } from "../domain/providers.ts";
 import { createPipelineEngine } from "../pipeline/pipeline-engine.ts";
 import type { PipelineEventBus } from "../pipeline/pipeline-events.ts";
 import {
+  resolveTtsOptionsForProject,
   selectTranscriptionProvider,
   selectTtsProvider,
   type VbeeCredentials,
@@ -90,7 +91,7 @@ const renderRoutes: FastifyPluginCallback<RenderRouteOptions> = (fastify, opts, 
           opts.vbeeCredentials,
           assetsDir,
           opts.baseLogger,
-          project.tts,
+          resolveTtsOptionsForProject(project.preset, project.tts),
         ),
         transcriptionProvider: selectTranscriptionProvider(
           opts.transcriptionMode,

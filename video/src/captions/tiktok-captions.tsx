@@ -3,31 +3,43 @@ import { loadFont } from "@remotion/google-fonts/BeVietnamPro";
 import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 
+import type { CaptionStyleConfig } from "@flow-ex/shared-schemas";
+
 import { groupCaptionsForDisplay } from "./caption-tokenizer.ts";
 
 // `subsets: ["vietnamese"]` (video.md's Captions rule) is what actually pulls in the diacritic
 // glyphs (ơ, ệ, ữ...) — the `latin`/`latin-ext` subsets this font also ships do not cover them.
-const { fontFamily } = loadFont("normal", { weights: ["700"], subsets: ["vietnamese"] });
+const { fontFamily } = loadFont("normal", { weights: ["700", "800"], subsets: ["vietnamese"] });
 
 const HIGHLIGHT_COLOR = "#39e75f";
 
 export interface TikTokCaptionsProps {
   captions: Caption[];
+  /** Task 009: font size/weight/padding/token-combine window, taken from
+   * `PRESETS[preset].captionStyle` (`@flow-ex/shared-schemas`) — no longer hard-coded here. */
+  captionStyle: CaptionStyleConfig;
 }
 
 /** Renders one active TikTok-style caption page at a time, highlighting the word whose
  * `[fromMs, toMs)` window contains the current playback time (../../.claude/rules/video.md's
  * Captions section). Purely a function of `useCurrentFrame()`/`useVideoConfig()` plus its
- * `captions` prop — no IO, so it renders identically in the Player preview and the SSR render. */
-export function TikTokCaptions({ captions }: TikTokCaptionsProps): React.ReactElement | null {
+ * `captions`/`captionStyle` props — no IO, so it renders identically in the Player preview and
+ * the SSR render. */
+export function TikTokCaptions({
+  captions,
+  captionStyle,
+}: TikTokCaptionsProps): React.ReactElement | null {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const currentMs = (frame / fps) * 1000;
 
-  // Regroups only when `captions` itself changes, not on every frame — `useCurrentFrame()` above
-  // re-renders this component on every frame, and re-tokenizing the whole scene's captions each
-  // time is wasted work for a longer scene.
-  const { pages } = useMemo(() => groupCaptionsForDisplay(captions), [captions]);
+  // Regroups when `captions` OR the preset's own combine window changes, not on every frame —
+  // `useCurrentFrame()` above re-renders this component on every frame, and re-tokenizing the
+  // whole scene's captions each time is wasted work for a longer scene.
+  const { pages } = useMemo(
+    () => groupCaptionsForDisplay(captions, captionStyle.combineTokensWithinMs),
+    [captions, captionStyle.combineTokensWithinMs],
+  );
   const activePage = pages.find(
     (page) => currentMs >= page.startMs && currentMs < page.startMs + page.durationMs,
   );
@@ -40,15 +52,15 @@ export function TikTokCaptions({ captions }: TikTokCaptionsProps): React.ReactEl
       style={{
         justifyContent: "flex-end",
         alignItems: "center",
-        paddingBottom: "10%",
+        paddingBottom: `${String(captionStyle.paddingBottomPercent)}%`,
         pointerEvents: "none",
       }}
     >
       <div
         style={{
           fontFamily,
-          fontSize: 64,
-          fontWeight: 700,
+          fontSize: captionStyle.fontSize,
+          fontWeight: captionStyle.fontWeight,
           color: "white",
           textAlign: "center",
           WebkitTextStroke: "3px black",
