@@ -1,5 +1,7 @@
 import type { LogPipelineEvent } from "@flow-ex/shared-schemas";
 
+import { ScrollArea } from "./ui/scroll-area";
+
 export interface ProjectLogTabProps {
   logLines: LogPipelineEvent[];
 }
@@ -18,10 +20,10 @@ export function ProjectLogTab({ logLines }: ProjectLogTabProps) {
   }
 
   return (
-    <div
+    <ScrollArea
       role="log"
       aria-live="polite"
-      className="max-h-96 overflow-y-auto rounded-md border bg-muted/30 p-3 font-mono text-xs"
+      className="h-96 rounded-md border bg-muted/30 p-3 font-mono text-xs"
     >
       {logLines.map((line, index) => (
         <div key={index} className={LEVEL_COLOR[line.level]}>
@@ -30,6 +32,6 @@ export function ProjectLogTab({ logLines }: ProjectLogTabProps) {
           {line.msg}
         </div>
       ))}
-    </div>
+    </ScrollArea>
   );
 }

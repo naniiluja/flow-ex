@@ -1,25 +1,15 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router";
 
-import type { SceneStatus } from "@flow-ex/shared-schemas";
-
+import { Alert, AlertDescription } from "../components/ui/alert";
 import { ProjectLogTab } from "../components/project-log-tab";
-import { SceneAudioPreview } from "../components/scene-audio-preview";
+import { SceneDetailDialog } from "../components/scene-detail-dialog";
+import { SceneGrid } from "../components/scene-grid";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useProject } from "../hooks/use-project";
 import { useProjectEvents } from "../hooks/use-project-events";
 import { useStartRender } from "../hooks/use-scene-review";
-
-const STATUS_LABEL: Record<SceneStatus, string> = {
-  pending: "Chờ xử lý",
-  generating_image: "Đang sinh ảnh",
-  awaiting_review: "Chờ duyệt",
-  generating_audio: "Đang sinh giọng đọc",
-  transcribing: "Đang tạo phụ đề",
-  ready_for_render: "Sẵn sàng dựng video",
-  failed: "Thất bại",
-};
 
 export function ProjectScenesPage() {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +18,7 @@ export function ProjectScenesPage() {
   // otherwise hold a connection open behind an error screen with nothing to show for it.
   const { logLines } = useProjectEvents(project ? id : undefined);
   const startRender = useStartRender(id);
+  const [openSceneIndex, setOpenSceneIndex] = useState<number | undefined>(undefined);
 
   if (isLoading) {
     return <main className="p-6 text-sm text-muted-foreground">Đang tải dự án...</main>;
@@ -39,7 +30,7 @@ export function ProjectScenesPage() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl p-6">
+    <main className="mx-auto max-w-6xl p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link
@@ -89,9 +80,9 @@ export function ProjectScenesPage() {
         </div>
       </div>
       {startRender.error && (
-        <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {startRender.error.message}
-        </p>
+        <Alert variant="destructive" className="mb-4">
+          <AlertDescription>{startRender.error.message}</AlertDescription>
+        </Alert>
       )}
       <Tabs defaultValue="scenes">
         <TabsList>
@@ -100,29 +91,23 @@ export function ProjectScenesPage() {
           <TabsTrigger value="video">Video</TabsTrigger>
         </TabsList>
         <TabsContent value="scenes">
-          <div className="flex flex-col gap-3" data-testid="scene-list">
-            {project.scenes.map((scene, index) => (
-              <Card key={index}>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Cảnh {index + 1}</CardTitle>
-                  <span className="text-xs text-muted-foreground">
-                    {STATUS_LABEL[scene.status]}
-                  </span>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-2 text-sm">
-                  <p>
-                    <span className="font-medium">Lời thoại: </span>
-                    {scene.narration}
-                  </p>
-                  <p>
-                    <span className="font-medium">Prompt ảnh: </span>
-                    {scene.imagePrompt}
-                  </p>
-                  <SceneAudioPreview projectId={project.id} audioFile={scene.audioFile} />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <SceneGrid
+            projectId={project.id}
+            scenes={project.scenes}
+            aspectRatio={project.aspectRatio}
+            onSelectScene={setOpenSceneIndex}
+          />
+          {openSceneIndex !== undefined && project.scenes[openSceneIndex] && (
+            <SceneDetailDialog
+              projectId={project.id}
+              sceneIndex={openSceneIndex}
+              scene={project.scenes[openSceneIndex]}
+              open={true}
+              onOpenChange={(open) => {
+                if (!open) setOpenSceneIndex(undefined);
+              }}
+            />
+          )}
         </TabsContent>
         <TabsContent value="log">
           <ProjectLogTab logLines={logLines} />

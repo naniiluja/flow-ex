@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { SceneVariantPicker } from "../components/scene-variant-picker";
+import { Alert, AlertDescription } from "../components/ui/alert";
+import { SceneDetailDialog } from "../components/scene-detail-dialog";
+import { SceneGrid } from "../components/scene-grid";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { useProject } from "../hooks/use-project";
 import { useApproveScene, useRegenerateScene, useStartRender } from "../hooks/use-scene-review";
 
@@ -23,6 +24,7 @@ export function ProjectReviewPage() {
   const regenerateScene = useRegenerateScene(id);
   const startRender = useStartRender(id);
   const [isApprovingAll, setIsApprovingAll] = useState(false);
+  const [openSceneIndex, setOpenSceneIndex] = useState<number | undefined>(undefined);
 
   // Only the LATEST mutation's own error should stay visible — without this, an approve
   // failure lingers on screen even after a later regenerate succeeds, since each `useMutation`
@@ -117,9 +119,9 @@ export function ProjectReviewPage() {
       </div>
 
       {mutationError && (
-        <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {mutationError.message}
-        </p>
+        <Alert variant="destructive" className="mb-4">
+          <AlertDescription>{mutationError.message}</AlertDescription>
+        </Alert>
       )}
 
       {everySceneApproved ? (
@@ -127,50 +129,45 @@ export function ProjectReviewPage() {
           Đã duyệt xong toàn bộ cảnh. Bấm "Render" để dựng video.
         </p>
       ) : (
-        <div className="flex flex-col gap-3">
-          {project.scenes.map((scene, index) => {
-            if (scene.status !== "awaiting_review") {
-              return null;
-            }
-            return (
-              <Card key={index}>
-                <CardHeader>
-                  <CardTitle>Cảnh {index + 1}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="mb-2 text-sm text-muted-foreground">{scene.imagePrompt}</p>
-                  {scene.imageFile === undefined ? (
-                    // Should not happen (the pipeline always writes imageFile before a scene can
-                    // reach awaiting_review), but a silent `null` here would look like the scene
-                    // vanished rather than surfacing a real data problem.
-                    <p className="text-sm text-destructive">
-                      Cảnh này đang chờ duyệt nhưng chưa có ảnh nào — vui lòng báo lỗi này.
-                    </p>
-                  ) : (
-                    <SceneVariantPicker
-                      projectId={project.id}
-                      sceneIndex={index}
-                      imageFile={scene.imageFile}
-                      variants={scene.imageVariants}
-                      isPending={
-                        (approveScene.isPending && approveScene.variables.sceneIndex === index) ||
-                        (regenerateScene.isPending && regenerateScene.variables === index)
-                      }
-                      onApprove={(variantIndex) => {
-                        resetOtherErrors("approve");
-                        approveScene.mutate({ sceneIndex: index, variantIndex });
-                      }}
-                      onRegenerate={() => {
-                        resetOtherErrors("regenerate");
-                        regenerateScene.mutate(index);
-                      }}
-                    />
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        <>
+          <SceneGrid
+            projectId={project.id}
+            scenes={project.scenes.filter((scene) => scene.status === "awaiting_review")}
+            aspectRatio={project.aspectRatio}
+            onSelectScene={setOpenSceneIndex}
+          />
+          {openSceneIndex !== undefined &&
+            sceneIndicesAwaitingReview[openSceneIndex] !== undefined &&
+            (() => {
+              const realIndex = sceneIndicesAwaitingReview[openSceneIndex];
+              const scene = project.scenes[realIndex];
+              if (scene?.imageFile === undefined) return null;
+              return (
+                <SceneDetailDialog
+                  projectId={project.id}
+                  sceneIndex={realIndex}
+                  scene={scene}
+                  open={true}
+                  onOpenChange={(open) => {
+                    if (!open) setOpenSceneIndex(undefined);
+                  }}
+                  review={{
+                    isPending:
+                      (approveScene.isPending && approveScene.variables.sceneIndex === realIndex) ||
+                      (regenerateScene.isPending && regenerateScene.variables === realIndex),
+                    onApprove: (variantIndex) => {
+                      resetOtherErrors("approve");
+                      approveScene.mutate({ sceneIndex: realIndex, variantIndex });
+                    },
+                    onRegenerate: () => {
+                      resetOtherErrors("regenerate");
+                      regenerateScene.mutate(realIndex);
+                    },
+                  }}
+                />
+              );
+            })()}
+        </>
       )}
     </main>
   );

@@ -73,14 +73,27 @@ describe("ProjectReviewPage", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders one SceneVariantPicker per awaiting_review scene", async () => {
+  it("renders one scene-card per awaiting_review scene", async () => {
     const project = makeProject();
     vi.spyOn(apiClient, "getProject").mockResolvedValue(project);
 
     renderAt(project.id);
 
-    await waitFor(() => expect(screen.getAllByRole("img")).toHaveLength(2));
-    expect(screen.getAllByRole("button", { name: "Duyệt" })).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByTestId("scene-card")).toHaveLength(2));
+  });
+
+  it("opening a card shows its SceneVariantPicker with a Duyệt button in the dialog", async () => {
+    const project = makeProject();
+    vi.spyOn(apiClient, "getProject").mockResolvedValue(project);
+
+    renderAt(project.id);
+    await waitFor(() => expect(screen.getAllByTestId("scene-card")).toHaveLength(2));
+
+    const firstCard = screen.getAllByTestId("scene-card")[0];
+    if (firstCard === undefined) throw new Error("expected at least one scene-card");
+    fireEvent.click(firstCard);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Duyệt" })).toBeInTheDocument());
   });
 
   it("keeps the Render button disabled while any scene is still awaiting_review", async () => {
@@ -89,11 +102,11 @@ describe("ProjectReviewPage", () => {
 
     renderAt(project.id);
 
-    await waitFor(() => expect(screen.getAllByRole("img")).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId("scene-card")).toHaveLength(2));
     expect(screen.getByRole("button", { name: /Render/i })).toBeDisabled();
   });
 
-  it("approving a scene removes its picker and patches the cache from the response", async () => {
+  it("approving a scene from the dialog patches the cache from the response", async () => {
     const project = makeProject();
     vi.spyOn(apiClient, "getProject").mockResolvedValue(project);
     const approvedScenes = project.scenes.map((scene, index) =>
@@ -102,13 +115,15 @@ describe("ProjectReviewPage", () => {
     vi.spyOn(apiClient, "approveScene").mockResolvedValue({ ...project, scenes: approvedScenes });
 
     renderAt(project.id);
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "Duyệt" })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId("scene-card")).toHaveLength(2));
 
-    const firstApprove = screen.getAllByRole("button", { name: "Duyệt" })[0];
-    if (firstApprove === undefined) throw new Error("expected at least one Duyệt button");
-    fireEvent.click(firstApprove);
+    const firstCard = screen.getAllByTestId("scene-card")[0];
+    if (firstCard === undefined) throw new Error("expected at least one scene-card");
+    fireEvent.click(firstCard);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Duyệt" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Duyệt" }));
 
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "Duyệt" })).toHaveLength(1));
+    await waitFor(() => expect(screen.getAllByTestId("scene-card")).toHaveLength(1));
     expect(apiClient.approveScene).toHaveBeenCalledWith(project.id, 0, 0);
   });
 
@@ -164,11 +179,13 @@ describe("ProjectReviewPage", () => {
     );
 
     renderAt(project.id);
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "Duyệt" })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId("scene-card")).toHaveLength(2));
 
-    const firstApprove = screen.getAllByRole("button", { name: "Duyệt" })[0];
-    if (firstApprove === undefined) throw new Error("expected at least one Duyệt button");
-    fireEvent.click(firstApprove);
+    const firstCard = screen.getAllByTestId("scene-card")[0];
+    if (firstCard === undefined) throw new Error("expected at least one scene-card");
+    fireEvent.click(firstCard);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Duyệt" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Duyệt" }));
 
     await waitFor(() =>
       expect(screen.getByText(/not awaiting review anymore/)).toBeInTheDocument(),
