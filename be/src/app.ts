@@ -4,15 +4,46 @@ import {
   type ZodTypeProvider,
 } from "@fastify/type-provider-zod";
 import Fastify, { type FastifyError } from "fastify";
-import type { Logger } from "pino";
+import pino, { type Logger } from "pino";
 
 import { AppError } from "./domain/app-error.ts";
+import { createPipelineEventBus, type PipelineEventBus } from "./pipeline/pipeline-events.ts";
+import assetsRoutes from "./routes/assets.ts";
+import eventsRoutes from "./routes/events.ts";
+import projectAssetsRoutes from "./routes/project-assets.ts";
 import projectsRoutes from "./routes/projects.ts";
+import {
+  createImageProviderFactory,
+  type FlowChromeOptions,
+  type VbeeCredentials,
+  type WhisperOptions,
+} from "./providers/select-providers.ts";
+import renderRoutes from "./routes/render.ts";
+import scenesRoutes from "./routes/scenes.ts";
 import type { ProjectStore } from "./store/project-store.ts";
 
 export interface BuildAppOptions {
   store: ProjectStore;
   loggerInstance?: Logger;
+  /** Injectable so a test can observe/emit pipeline events directly; defaults to a fresh
+   * per-app bus (../.claude/rules/architecture.md). */
+  eventBus?: PipelineEventBus;
+  /** Present -> real `VbeeTtsProvider`; absent -> `FakeTtsProvider` (task 003/004, see
+   * `render.ts`). `server.ts` derives this from `env.VBEE_APP_ID`/`VBEE_TOKEN`. */
+  vbeeCredentials?: VbeeCredentials;
+  /** `"real"` -> `FlowImageProvider` (task 005, needs `flowChromeOptions`); default/absent ->
+   * `FakeImageProvider` (task 003). `server.ts` derives this from `env.FLOW_IMAGE_PROVIDER`. */
+  flowImageProviderMode?: "fake" | "real";
+  flowChromeOptions?: FlowChromeOptions;
+  /** `"whisper"` -> `WhisperTranscriptionProvider` (task 007, needs `whisperOptions`);
+   * default/absent -> `FakeTranscriptionProvider`. `server.ts` derives this from
+   * `env.TRANSCRIBE_PROVIDER`. */
+  transcriptionMode?: "fake" | "whisper";
+  whisperOptions?: WhisperOptions;
+  /** Task 014: starting ceiling for concurrent image-step generation, threaded to
+   * `renderRoutes` -> `createPipelineEngine`. `server.ts` derives this from
+   * `env.FLOW_IMAGE_CONCURRENCY`. */
+  imageConcurrency?: number;
 }
 
 /** Explicit code -> HTTP status map (see ../.claude/rules/error-handling.md). Anything not
@@ -20,6 +51,9 @@ export interface BuildAppOptions {
  * AppError code never needs an edit here unless it needs a NON-default status. */
 const STATUS_BY_APP_ERROR_CODE: Record<string, number> = {
   PROJECT_NOT_FOUND: 404,
+  ASSET_PATH_INVALID: 400,
+  SCENE_NOT_FOUND: 404,
+  SCENE_VARIANT_INVALID: 400,
 };
 
 function statusForAppError(error: AppError): number {
@@ -67,7 +101,45 @@ export function buildApp(options: BuildAppOptions) {
     reply.code(500).send({ error: { code: "INTERNAL_ERROR", message: "Internal error" } });
   });
 
+  // `@fastify/static`'s own `reply.sendFile`/`reply.callNotFound()` (used by both
+  // `routes/project-assets.ts` routes) answers a missing file with Fastify's DEFAULT 404 body
+  // (`{message, error, statusCode}`), which leaks the internal route path and does not match
+  // ../.claude/rules/api-design.md's `{ error: { code, message } }` shape everywhere else.
+  fastify.setNotFoundHandler((_request, reply) => {
+    reply.code(404).send({ error: { code: "NOT_FOUND", message: "Not found" } });
+  });
+
+  const baseLogger = options.loggerInstance ?? pino({ level: "silent" });
+  const eventBus = options.eventBus ?? createPipelineEventBus();
+  // One `ImageProvider` per project, shared between `renderRoutes` and `scenesRoutes`
+  // (../.claude/rules/architecture.md) — see `select-providers.ts`'s `createImageProviderFactory`
+  // doc comment for why a fresh instance per request would leak a CDP connection.
+  const getImageProvider = createImageProviderFactory(
+    options.flowImageProviderMode,
+    options.flowChromeOptions,
+    options.store.projectsRoot,
+  );
+
   fastify.register(projectsRoutes, { store: options.store });
+  fastify.register(assetsRoutes);
+  fastify.register(projectAssetsRoutes, { projectsRoot: options.store.projectsRoot });
+  fastify.register(renderRoutes, {
+    store: options.store,
+    eventBus,
+    baseLogger,
+    vbeeCredentials: options.vbeeCredentials,
+    getImageProvider,
+    transcriptionMode: options.transcriptionMode,
+    whisperOptions: options.whisperOptions,
+    imageConcurrency: options.imageConcurrency,
+  });
+  fastify.register(scenesRoutes, {
+    store: options.store,
+    baseLogger,
+    eventBus,
+    getImageProvider,
+  });
+  fastify.register(eventsRoutes, { eventBus });
 
   return fastify;
 }

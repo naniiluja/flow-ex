@@ -11,6 +11,9 @@ logs/
 # dedicated Chrome profile used for Flow automation (CDP)
 chrome-profile/
 
+# whisper.cpp binary + downloaded model cache (task 007), never per-project data
+.whisper-cache/
+
 # local Claude Code session/harness state, not part of the shared project spec
 .claude/settings.local.json
 .claude/scheduled_tasks.lock

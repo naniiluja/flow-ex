@@ -3,7 +3,14 @@ import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { ApiError, createProject, getProject } from "./api-client.ts";
+import {
+  ApiError,
+  approveScene,
+  createProject,
+  getProject,
+  regenerateScene,
+  startRender,
+} from "./api-client";
 
 // Node's native fetch (unlike a browser's) refuses a relative URL; resolve it against a fixed
 // origin here so the app code can keep using plain relative paths (correct once served
@@ -40,9 +47,11 @@ const validProjectBody = {
   title: "Cau chuyen mua he",
   voice: "hn_female_ngochuyen_full_48k-fhg",
   aspectRatio: "16:9",
-  schemaVersion: 1,
+  preset: "youtube",
+  schemaVersion: 2,
   createdAt: new Date().toISOString(),
-  scenes: [{ narration: "Xin chao", imagePrompt: "beach" }],
+  runStatus: "idle",
+  scenes: [{ narration: "Xin chao", imagePrompt: "beach", status: "pending", attempts: 0 }],
 };
 
 describe("createProject / getProject", () => {
@@ -112,5 +121,75 @@ describe("createProject / getProject", () => {
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).code).toBe("UNKNOWN_ERROR");
     expect((error as ApiError).status).toBe(502);
+  });
+});
+
+/** These three thin wrappers share `createProject`/`getProject`'s own `toApiError` path (already
+ * matrixed above), so only the request shape + happy path are asserted here (risk-based, per
+ * ../../.claude/rules/testing.md's "internal test the paths most likely to break"). */
+describe("approveScene / regenerateScene / startRender (task 006)", () => {
+  const PROJECT_ID = "44444444-4444-4444-8444-444444444444";
+
+  it("POSTs an empty body when no variantIndex is given", async () => {
+    let receivedBody: unknown;
+    server.use(
+      http.post(`${ORIGIN}/api/projects/:id/scenes/:index/approve`, async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json(validProjectBody);
+      }),
+    );
+
+    const project = await approveScene(PROJECT_ID, 0);
+    expect(project.id).toBe(PROJECT_ID);
+    expect(receivedBody).toEqual({});
+  });
+
+  it("POSTs the chosen variantIndex when given", async () => {
+    let receivedBody: unknown;
+    server.use(
+      http.post(`${ORIGIN}/api/projects/:id/scenes/:index/approve`, async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json(validProjectBody);
+      }),
+    );
+
+    await approveScene(PROJECT_ID, 0, 1);
+    expect(receivedBody).toEqual({ variantIndex: 1 });
+  });
+
+  it("regenerateScene POSTs with no body and returns the updated project", async () => {
+    server.use(
+      http.post(`${ORIGIN}/api/projects/:id/scenes/:index/regenerate`, () =>
+        HttpResponse.json(validProjectBody),
+      ),
+    );
+
+    const project = await regenerateScene(PROJECT_ID, 0);
+    expect(project.id).toBe(PROJECT_ID);
+  });
+
+  it("startRender POSTs to the render route and resolves with no body", async () => {
+    server.use(
+      http.post(`${ORIGIN}/api/projects/:id/render`, () =>
+        HttpResponse.json({ status: "started" }, { status: 202 }),
+      ),
+    );
+
+    await expect(startRender(PROJECT_ID)).resolves.toBeUndefined();
+  });
+
+  it("rejects with an ApiError when approve responds 409 (task 006's SCENE_NOT_AWAITING_REVIEW)", async () => {
+    server.use(
+      http.post(`${ORIGIN}/api/projects/:id/scenes/:index/approve`, () =>
+        HttpResponse.json(
+          { error: { code: "SCENE_NOT_AWAITING_REVIEW", message: "not awaiting review" } },
+          { status: 409 },
+        ),
+      ),
+    );
+
+    const error = await approveScene(PROJECT_ID, 0).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).code).toBe("SCENE_NOT_AWAITING_REVIEW");
   });
 });

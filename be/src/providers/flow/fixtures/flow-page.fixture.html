@@ -1,0 +1,222 @@
+<!doctype html>
+<!--
+  Hand-authored fixture reproducing the DOM structure verified live against
+  https://flow.google.com/project/<uuid> via a real Chrome CDP session on 2026-09-17 (task 005) —
+  NOT a scrape of the real page, which would embed the account's own session/PII data unsafe to
+  commit to a public repo. Every selector below is copied verbatim from that live verification
+  (../../.claude/rules/flow-automation.md); the inline script simulates just enough real DOM
+  behavior (focus, input events, the pending-tile -> <img> transition) for
+  `flow-automation.test.ts` and `preflight.test.ts` to drive the SAME Playwright calls
+  `flow-automation.ts`/`preflight.ts` use against the real page.
+
+  Real smoke-run finding (2026-09-17, task 005): Flow swaps the ENTIRE wrapping custom element
+  around `.ProseMirror` based on the agent-mode chip's own state — `flow-creative-agent-prompt-
+  box` while agent mode is ON, `flow-prompt-box` (used in this fixture, matching agent mode OFF
+  by default) once it's OFF. `flow-automation.ts`'s `PROMPT_EDITOR_SELECTOR` therefore does NOT
+  scope to either outer tag, only to `.ProseMirror` itself (confirmed unique on the real page in
+  BOTH states) — an earlier pass of this file scoped it to one specific tag name and broke the
+  moment the OTHER state was active.
+
+  A separate finding the same day: `settings-trigger-button` genuinely renders `hidden` (this
+  fixture simulates that) whenever the agent-mode chip is `aria-pressed="true"`, and only
+  becomes visible/clickable once agent mode is off. `agent-mode-chip`/`settings-trigger-button`
+  are otherwise UNCHANGED from the original, non-live 2026-09-16 survey.
+-->
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <title>Flow fixture</title>
+  </head>
+  <body>
+    <flow-prompt-box>
+      <flow-base-prompt-box>
+        <flow-rich-text-editor>
+          <div class="ProseMirror" contenteditable="true"></div>
+        </flow-rich-text-editor>
+        <button class="agent-mode-chip" type="button" aria-pressed="false">Tác nhân</button>
+        <button
+          class="settings-trigger-button"
+          type="button"
+          aria-label="Điều kiện kích hoạt cài đặt"
+        >
+          Cài đặt
+        </button>
+        <button
+          class="generate-icon-button"
+          type="submit"
+          aria-label="Bắt đầu tạo"
+          disabled
+        ></button>
+        <button
+          class="add-menu-trigger"
+          type="button"
+          aria-label="Thêm thành phần vào ô nhập câu lệnh"
+        >
+          +
+        </button>
+      </flow-base-prompt-box>
+    </flow-prompt-box>
+
+    <!--
+      Task 013, verified live 2026-09-17: clicking `.add-menu-trigger` opens this asset picker.
+      Task 015 v2, verified live 2026-09-18: the picker's own sidebar carries an upload control
+      (`button.sidebar-upload-btn`, "Tải nội dung nghe nhìn lên") that fires a NATIVE file chooser
+      — no `<input type=file>` sits in the real page's DOM at rest, so the automation intercepts
+      Playwright's `filechooser` event instead. This fixture reproduces that shape with a hidden
+      `<input type=file>` the button clicks programmatically (which is what makes Chromium raise
+      the same `filechooser` event), then PREPENDS the uploaded item to the asset list, mirroring
+      Flow's own "Gần đây"/most-recent-first ordering that `attachUploadedReferenceImages` relies
+      on when it picks `.asset-item` `.first()`.
+    -->
+    <div id="asset-picker" hidden>
+      <input class="editable-text-input" placeholder="Tìm kiếm thành phần" />
+      <button class="sidebar-upload-btn" type="button">Tải nội dung nghe nhìn lên</button>
+      <input id="upload-file-input" type="file" accept="image/*" hidden />
+      <div role="listbox" id="asset-list">
+        <div class="asset-item" data-name="Cô bán cà phê">Cô bán cà phê</div>
+      </div>
+      <div id="asset-detail" hidden>
+        <button class="detail-add-to-prompt-btn" type="button">Thêm vào câu lệnh</button>
+      </div>
+    </div>
+
+    <div id="settings-overlay" hidden>
+      <mat-button-toggle-group data-group="ratio">
+        <mat-button-toggle><mat-icon>crop_16_9</mat-icon>16:9</mat-button-toggle>
+        <mat-button-toggle><mat-icon>crop_9_16</mat-icon>9:16</mat-button-toggle>
+      </mat-button-toggle-group>
+      <mat-button-toggle-group data-group="batch">
+        <mat-button-toggle>x1</mat-button-toggle>
+        <mat-button-toggle>x2</mat-button-toggle>
+      </mat-button-toggle-group>
+    </div>
+
+    <div id="tiles"></div>
+
+    <script>
+      const editor = document.querySelector(".ProseMirror");
+      const generateButton = document.querySelector(".generate-icon-button");
+      const settingsButton = document.querySelector(".settings-trigger-button");
+      const agentChip = document.querySelector(".agent-mode-chip");
+      const overlay = document.getElementById("settings-overlay");
+      const tiles = document.getElementById("tiles");
+      const addMenuTrigger = document.querySelector(".add-menu-trigger");
+      const assetPicker = document.getElementById("asset-picker");
+      const assetSearchInput = assetPicker.querySelector(".editable-text-input");
+      const assetDetail = document.getElementById("asset-detail");
+      const addToPromptBtn = assetPicker.querySelector(".detail-add-to-prompt-btn");
+
+      const assetList = document.getElementById("asset-list");
+      const sidebarUploadBtn = assetPicker.querySelector(".sidebar-upload-btn");
+      const uploadFileInput = document.getElementById("upload-file-input");
+      let selectedAssetName = null;
+
+      addMenuTrigger.addEventListener("click", () => {
+        assetPicker.hidden = false;
+      });
+      assetSearchInput.addEventListener("input", () => {
+        const query = assetSearchInput.value.trim().toLowerCase();
+        for (const item of assetPicker.querySelectorAll(".asset-item")) {
+          item.style.display = item.dataset.name.toLowerCase().includes(query) ? "" : "none";
+        }
+      });
+      function wireAssetItem(item) {
+        item.addEventListener("click", () => {
+          selectedAssetName = item.dataset.name;
+          assetDetail.hidden = false;
+        });
+      }
+      for (const item of assetPicker.querySelectorAll(".asset-item")) {
+        wireAssetItem(item);
+      }
+      // Clicking the sidebar upload button raises the same native file chooser the real page does.
+      sidebarUploadBtn.addEventListener("click", () => {
+        uploadFileInput.click();
+      });
+      uploadFileInput.addEventListener("change", () => {
+        const file = uploadFileInput.files[0];
+        if (!file) {
+          return;
+        }
+        const item = document.createElement("div");
+        item.className = "asset-item";
+        item.dataset.name = file.name;
+        item.textContent = file.name;
+        wireAssetItem(item);
+        // Most-recent-first, matching the real picker's own ordering.
+        assetList.insertBefore(item, assetList.firstChild);
+      });
+      addToPromptBtn.addEventListener("click", () => {
+        window.__flowFixtureAttachedReferences = window.__flowFixtureAttachedReferences || [];
+        window.__flowFixtureAttachedReferences.push(selectedAssetName ?? assetSearchInput.value);
+        assetPicker.hidden = true;
+        assetDetail.hidden = true;
+        assetSearchInput.value = "";
+        selectedAssetName = null;
+      });
+
+      function syncSettingsVisibility() {
+        // Real Flow behavior verified live 2026-09-17: the settings trigger is only visible
+        // (and clickable) once agent mode is OFF.
+        settingsButton.hidden = agentChip.getAttribute("aria-pressed") === "true";
+      }
+      syncSettingsVisibility();
+
+      editor.addEventListener("input", () => {
+        generateButton.disabled = editor.textContent.trim().length === 0;
+      });
+
+      agentChip.addEventListener("click", () => {
+        const next = agentChip.getAttribute("aria-pressed") === "true" ? "false" : "true";
+        agentChip.setAttribute("aria-pressed", next);
+        syncSettingsVisibility();
+      });
+
+      settingsButton.addEventListener("click", () => {
+        overlay.hidden = !overlay.hidden;
+      });
+      document.body.addEventListener("click", (event) => {
+        if (event.target === document.body) overlay.hidden = true;
+      });
+      for (const toggle of overlay.querySelectorAll("mat-button-toggle")) {
+        toggle.addEventListener("click", () => {
+          toggle.classList.add("selected");
+        });
+      }
+
+      generateButton.addEventListener("click", () => {
+        if (generateButton.disabled) return;
+        const tile = document.createElement("flow-image-tile");
+        const pending = document.createElement("flow-pending-tile");
+        pending.textContent = "image 40%";
+        tile.appendChild(pending);
+        // Verified live 2026-09-17 against a real open Flow project page (task 015 bugfix): a new
+        // submission PREPENDS its tile at the front of the list, not append at the end — the
+        // opposite of what task 014 originally assumed. Reproduced here so the fixture matches
+        // reality (../../.claude/rules/flow-automation.md's "Tile identity" section).
+        tiles.insertBefore(tile, tiles.firstChild);
+        window.__flowFixtureGenerationCount = (window.__flowFixtureGenerationCount || 0) + 1;
+        // Each generation gets a DIFFERENT uuid (padded from the running counter), so a test
+        // driving two consecutive submits on the SAME page can prove `submitAndWaitForImage`
+        // picks the NEW image, not a stale one still sitting in the DOM from a prior scene —
+        // task 005's real bug (be/.claude/rules/flow-automation.md's "Stale-image guard").
+        const uuid = `123e4567-e89b-12d3-a456-${String(window.__flowFixtureGenerationCount).padStart(12, "0")}`;
+        // Task 014: lets a test drive per-submit decode delays (e.g. to prove tile-index
+        // identification survives images finishing in a DIFFERENT order than they were
+        // submitted in), via `window.__flowFixtureDelaysMs[generationIndex]` set before the
+        // click. Falls back to the original fixed 150ms when unset.
+        const delayIndex = window.__flowFixtureGenerationCount - 1;
+        const delayMs = window.__flowFixtureDelaysMs?.[delayIndex] ?? 150;
+        setTimeout(() => {
+          tile.removeChild(pending);
+          const img = document.createElement("img");
+          img.src = `https://flow-content.google.test/image/${uuid}?sig=fake`;
+          Object.defineProperty(img, "naturalWidth", { value: 1376 });
+          Object.defineProperty(img, "naturalHeight", { value: 768 });
+          Object.defineProperty(img, "complete", { value: true });
+          tile.appendChild(img);
+        }, delayMs);
+      });
+    </script>
+  </body>
+</html>

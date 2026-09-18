@@ -1,7 +1,17 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": ["node"],
+    // be/ has no JSX of its own, but it imports @flow-ex/video (a .tsx package) directly by
+    // source, so tsc must be able to parse that dependency's syntax too.
+    "jsx": "react-jsx",
+    // "DOM" is here ONLY because Playwright's own Locator/Page.evaluate() types the resolved
+    // element/callback as a DOM lib type (Element/HTMLElement) regardless of the consumer's own
+    // tsconfig (../.claude/rules/flow-automation.md's "Testing scope"); `lib` in a tsconfig
+    // REPLACES the base's array rather than merging, so ES2023 is repeated here on purpose.
+    // Real accidental use of document/window/fetch etc. outside `src/providers/flow/**` would
+    // now type-check instead of erroring — accepted trade-off, see tech-stack.md.
+    "lib": ["ES2023", "DOM"]
   },
   "include": ["src"]
 }

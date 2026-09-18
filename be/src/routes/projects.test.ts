@@ -40,10 +40,25 @@ describe("POST /api/projects + GET /api/projects/:id", () => {
     expect(response.statusCode).toBe(201);
 
     const body = projectSchema.parse(response.json());
-    expect(body.schemaVersion).toBe(1);
+    // Bumped 1 -> 2 in task 009 when `preset` was added (see @flow-ex/shared-schemas's
+    // CURRENT_SCHEMA_VERSION doc comment).
+    expect(body.schemaVersion).toBe(2);
 
     const onDisk = await fs.readFile(path.join(root, body.id, "project.json"), "utf8");
     expect(projectSchema.parse(JSON.parse(onDisk)).id).toBe(body.id);
+  });
+
+  it("creates a project from a body that carries preset instead of aspectRatio", async () => {
+    const withoutAspectRatio: Record<string, unknown> = { ...validBody };
+    delete withoutAspectRatio.aspectRatio;
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      payload: { ...withoutAspectRatio, preset: "youtube" },
+    });
+    expect(response.statusCode).toBe(201);
+    const body = projectSchema.parse(response.json());
+    expect(body.preset).toBe("youtube");
   });
 
   it("rejects an invalid body with 400 VALIDATION_ERROR", async () => {
@@ -98,5 +113,43 @@ describe("POST /api/projects + GET /api/projects/:id", () => {
     const response = await app.inject({ method: "GET", url: `/api/projects/${id}` });
     expect(response.statusCode).toBe(500);
     expect(errorBodySchema.parse(response.json()).error.code).toBe("INTERNAL_ERROR");
+  });
+});
+
+describe("GET /api/projects", () => {
+  let root: string;
+  let app: ReturnType<typeof buildApp>;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "flow-ex-routes-list-"));
+    app = buildApp({ store: createProjectStore(root) });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("returns 200 with an empty list when no project exists", async () => {
+    const response = await app.inject({ method: "GET", url: "/api/projects" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ projects: [] });
+  });
+
+  it("returns a lightweight summary shape, never the heavy scenes[] array", async () => {
+    await app.inject({ method: "POST", url: "/api/projects", payload: validBody });
+
+    const response = await app.inject({ method: "GET", url: "/api/projects" });
+    expect(response.statusCode).toBe(200);
+    const body: { projects: Record<string, unknown>[] } = response.json();
+    expect(body.projects).toHaveLength(1);
+    const summary = body.projects[0];
+    expect(summary).not.toHaveProperty("scenes");
+    expect(summary).toMatchObject({
+      title: validBody.title,
+      runStatus: "idle",
+      sceneCount: 1,
+      doneSceneCount: 0,
+    });
   });
 });

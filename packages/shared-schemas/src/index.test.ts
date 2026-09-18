@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { scriptInputSchema, ttsOptionsSchema } from "./index.ts";
+import {
+  approveSceneBodySchema,
+  captionSchema,
+  captionsFileSchema,
+  migrateProjectJson,
+  projectSceneParamsSchema,
+  projectSceneSchema,
+  projectSchema,
+  scriptInputSchema,
+  ttsOptionsSchema,
+} from "./index.ts";
 
 const validScript = {
   title: "Cau chuyen mua he",
@@ -65,6 +75,178 @@ describe("scriptInputSchema", () => {
     if (result.success) {
       expect(result.data.tts).toBeUndefined();
     }
+  });
+
+  it("defaults reviewEnabled to false when omitted (task 006)", () => {
+    const result = scriptInputSchema.safeParse(validScript);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.reviewEnabled).toBe(false);
+    }
+  });
+
+  it("accepts an explicit reviewEnabled: true", () => {
+    const result = scriptInputSchema.safeParse({ ...validScript, reviewEnabled: true });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.reviewEnabled).toBe(true);
+    }
+  });
+});
+
+describe("projectSceneSchema (task 006 review-gate fields)", () => {
+  const baseScene = {
+    narration: "Xin chao",
+    imagePrompt: "a sunny beach",
+    status: "awaiting_review" as const,
+    attempts: 1,
+  };
+
+  it("accepts the new awaiting_review status", () => {
+    expect(projectSceneSchema.safeParse(baseScene).success).toBe(true);
+  });
+
+  it("defaults imageVariants to [] when omitted (loading a pre-task-006 project.json)", () => {
+    const result = projectSceneSchema.safeParse(baseScene);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.imageVariants).toEqual([]);
+    }
+  });
+
+  it("accepts a populated imageVariants list", () => {
+    const result = projectSceneSchema.safeParse({
+      ...baseScene,
+      imageVariants: [{ file: "a.png", width: 1376, height: 768 }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an imageVariants entry missing width (strict per-variant shape)", () => {
+    const result = projectSceneSchema.safeParse({
+      ...baseScene,
+      imageVariants: [{ file: "a.png", height: 768 }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts the new transcribing status (task 007)", () => {
+    const result = projectSceneSchema.safeParse({ ...baseScene, status: "transcribing" });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts an optional captionsFile path", () => {
+    const result = projectSceneSchema.safeParse({
+      ...baseScene,
+      captionsFile: "captions/000.json",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("omits captionsFile when not yet transcribed", () => {
+    const result = projectSceneSchema.safeParse(baseScene);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.captionsFile).toBeUndefined();
+    }
+  });
+});
+
+/**
+ * Contract-level EP/BVA matrix for captionSchema/captionsFileSchema (task 007).
+ *
+ * | text        | timestampMs / confidence | extra field | Expected                 |
+ * | ----------- | ------------------------ | ----------- | ------------------------- |
+ * | "William"   | number / number          | none        | success                   |
+ * | " a" (1 char, leading space) | null / null | none | success                   |
+ * | very long string (10000 chars) | 0 / 0     | none        | success                   |
+ * | ""  (empty text)               | 0 / 0     | none        | success (empty is valid text) |
+ * | valid caption                  | valid     | unknown key | error: strict, unknown key |
+ * | array of 0 captions             | —         | —           | success (empty file valid) |
+ */
+describe("captionSchema / captionsFileSchema", () => {
+  const baseCaption = {
+    text: "William",
+    startMs: 40,
+    endMs: 420,
+    timestampMs: 230,
+    confidence: 0.81,
+  };
+
+  it("accepts a normal token", () => {
+    expect(captionSchema.safeParse(baseCaption).success).toBe(true);
+  });
+
+  it("accepts a 1-character token with null timestampMs/confidence (boundary)", () => {
+    const result = captionSchema.safeParse({
+      ...baseCaption,
+      text: " a",
+      timestampMs: null,
+      confidence: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a very long token text (boundary: no max length enforced)", () => {
+    const result = captionSchema.safeParse({ ...baseCaption, text: "a".repeat(10_000) });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts an empty token text", () => {
+    const result = captionSchema.safeParse({ ...baseCaption, text: "" });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an unknown extra field (strict)", () => {
+    const result = captionSchema.safeParse({ ...baseCaption, extra: "nope" });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts an empty captions file (a silent scene)", () => {
+    expect(captionsFileSchema.safeParse([]).success).toBe(true);
+  });
+
+  it("accepts a captions file with multiple tokens in order", () => {
+    const result = captionsFileSchema.safeParse([
+      baseCaption,
+      { ...baseCaption, text: " just", startMs: 420, endMs: 650, timestampMs: 480 },
+    ]);
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("projectSceneParamsSchema", () => {
+  it("coerces a numeric index string from the URL", () => {
+    const result = projectSceneParamsSchema.safeParse({
+      id: "8f14e45f-ceea-4a3c-8c8c-000000000000",
+      index: "1",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.index).toBe(1);
+    }
+  });
+
+  it("rejects a negative index (boundary)", () => {
+    const result = projectSceneParamsSchema.safeParse({
+      id: "8f14e45f-ceea-4a3c-8c8c-000000000000",
+      index: "-1",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("approveSceneBodySchema", () => {
+  it("accepts an empty body (approve the current imageFile)", () => {
+    expect(approveSceneBodySchema.safeParse({}).success).toBe(true);
+  });
+
+  it("accepts a non-negative variantIndex", () => {
+    expect(approveSceneBodySchema.safeParse({ variantIndex: 0 }).success).toBe(true);
+  });
+
+  it("rejects a negative variantIndex (boundary)", () => {
+    expect(approveSceneBodySchema.safeParse({ variantIndex: -1 }).success).toBe(false);
   });
 });
 
@@ -138,5 +320,193 @@ describe("ttsOptionsSchema", () => {
   it("rejects clientPause.majorBreak below its minimum (0.09)", () => {
     const result = ttsOptionsSchema.safeParse({ clientPause: { majorBreak: 0.09 } });
     expect(result.success).toBe(false);
+  });
+});
+
+/**
+ * Contract-level EP/BVA matrix for the preset↔aspectRatio interplay on scriptInputSchema.
+ *
+ * | preset given | aspectRatio given | Expected                                    |
+ * | ------------ | ------------------ | -------------------------------------------- |
+ * | "tiktok"     | none               | resolved preset "tiktok", aspectRatio undefined |
+ * | none         | "9:16"             | resolved preset inferred "tiktok"             |
+ * | "youtube"    | "9:16" (conflict)  | aspectRatio "9:16" kept as-is (explicit wins downstream via resolveAspectRatio) |
+ * | none         | none               | rejected — at least one required             |
+ * | "instagram"  | —                  | rejected — unknown preset                    |
+ */
+describe("scriptInputSchema preset/aspectRatio", () => {
+  const base = {
+    title: "Cau chuyen mua he",
+    voice: "hn_female_ngochuyen_full_48k-fhg",
+    scenes: [{ narration: "Xin chao", imagePrompt: "a sunny beach" }],
+  };
+
+  it("accepts preset alone and resolves it unchanged", () => {
+    const result = scriptInputSchema.parse({ ...base, preset: "tiktok" });
+    expect(result.preset).toBe("tiktok");
+    expect(result.aspectRatio).toBeUndefined();
+  });
+
+  it("accepts aspectRatio alone and infers the matching preset", () => {
+    const result = scriptInputSchema.parse({ ...base, aspectRatio: "9:16" });
+    expect(result.preset).toBe("tiktok");
+    expect(result.aspectRatio).toBe("9:16");
+  });
+
+  it("an explicit aspectRatio that conflicts with preset is kept as given (aspectRatio wins over preset)", () => {
+    const result = scriptInputSchema.parse({ ...base, preset: "youtube", aspectRatio: "9:16" });
+    expect(result.preset).toBe("youtube");
+    expect(result.aspectRatio).toBe("9:16");
+  });
+
+  it("rejects when neither preset nor aspectRatio is given", () => {
+    expect(scriptInputSchema.safeParse(base).success).toBe(false);
+  });
+
+  it("rejects an unknown preset value", () => {
+    expect(scriptInputSchema.safeParse({ ...base, preset: "instagram" }).success).toBe(false);
+  });
+});
+
+describe("migrateProjectJson", () => {
+  const oldProject = {
+    id: "11111111-1111-4111-8111-111111111111",
+    title: "Cau chuyen mua he",
+    voice: "hn_female_ngochuyen_full_48k-fhg",
+    aspectRatio: "9:16",
+    reviewEnabled: false,
+    schemaVersion: 1,
+    createdAt: new Date().toISOString(),
+    runStatus: "idle",
+    scenes: [
+      {
+        narration: "Xin chao",
+        imagePrompt: "beach",
+        status: "pending",
+        attempts: 0,
+        imageVariants: [],
+      },
+    ],
+  };
+
+  it("infers preset from a v1 project's own aspectRatio and bumps schemaVersion", () => {
+    const migrated = migrateProjectJson(oldProject) as Record<string, unknown>;
+    expect(migrated.preset).toBe("tiktok");
+    expect(migrated.schemaVersion).toBe(2);
+  });
+
+  it("a migrated v1 project.json validates against the CURRENT projectSchema", () => {
+    const migrated = migrateProjectJson(oldProject);
+    const parsed = projectSchema.parse(migrated);
+    expect(parsed.preset).toBe("tiktok");
+    expect(parsed.aspectRatio).toBe("9:16");
+  });
+
+  it("leaves an already-current project untouched", () => {
+    const current = { ...oldProject, schemaVersion: 2, preset: "youtube" };
+    expect(migrateProjectJson(current)).toEqual(current);
+  });
+});
+
+describe("scriptInputSchema references (task 013)", () => {
+  // EP/BVA matrix on the references[]/scene.referenceIds contract.
+  // | references     | scene.referenceIds        | Expected                              |
+  // | absent         | absent                    | success, both default to []           |
+  // | 1 valid entry  | [] (empty)                | success                               |
+  // | 1 valid entry  | [thatId]                  | success                               |
+  // | 1 valid entry  | ["unknown-id"]            | error: unknown reference id           |
+  // | []             | ["any-id"]                | error: unknown reference id           |
+  it("defaults references and referenceIds to [] when both are absent", () => {
+    const result = scriptInputSchema.safeParse(validScript);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.references).toEqual([]);
+      expect(result.data.scenes[0]?.referenceIds).toEqual([]);
+    }
+  });
+
+  const oneReference = [
+    {
+      id: "char-1",
+      kind: "character" as const,
+      name: "Cô bán cà phê",
+      prompt: "a warm, tired barista in her 50s, hà nội style",
+    },
+  ];
+
+  it("accepts a scene with an empty referenceIds even when references exist", () => {
+    const result = scriptInputSchema.safeParse({ ...validScript, references: oneReference });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a scene whose referenceIds points at a declared reference", () => {
+    const result = scriptInputSchema.safeParse({
+      ...validScript,
+      references: oneReference,
+      scenes: [{ ...validScript.scenes[0], referenceIds: ["char-1"] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a scene whose referenceIds points at an UNDECLARED reference", () => {
+    const result = scriptInputSchema.safeParse({
+      ...validScript,
+      references: oneReference,
+      scenes: [{ ...validScript.scenes[0], referenceIds: ["nonexistent"] }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a scene referenceId when the project has no references at all", () => {
+    const result = scriptInputSchema.safeParse({
+      ...validScript,
+      scenes: [{ ...validScript.scenes[0], referenceIds: ["any-id"] }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a reference with an unknown kind (not character/setting)", () => {
+    const result = scriptInputSchema.safeParse({
+      ...validScript,
+      references: [{ ...oneReference[0], kind: "prop" }],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("projectSchema references (task 013)", () => {
+  // Written before this task merged with task 009's schemaVersion bump; a "no references field at
+  // all" project.json is now, by construction, a schemaVersion-1 file, and that shape only ever
+  // reaches `projectSchema` AFTER `migrateProjectJson` runs (project-store.ts's read path) — never
+  // parsed directly against the CURRENT schema. This test instead covers the case task 013
+  // actually needs: a schemaVersion-2 (post-009) project that predates task 013's `references`
+  // field, which must still default to [] rather than reject.
+  it("parses a schemaVersion-2 project.json that predates task 013's references field", async () => {
+    const { projectSchema, CURRENT_SCHEMA_VERSION } = await import("./index.ts");
+    const legacyProject = {
+      title: "Old project",
+      voice: "hn_female_ngochuyen_full_48k-fhg",
+      aspectRatio: "16:9",
+      preset: "youtube",
+      reviewEnabled: false,
+      scenes: [
+        {
+          narration: "Xin chao",
+          imagePrompt: "a sunny beach",
+          status: "pending",
+          attempts: 0,
+          imageVariants: [],
+        },
+      ],
+      id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      createdAt: new Date().toISOString(),
+      runStatus: "idle",
+    };
+    const result = projectSchema.safeParse(legacyProject);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.references).toEqual([]);
+    }
   });
 });

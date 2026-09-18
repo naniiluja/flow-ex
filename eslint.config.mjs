@@ -11,6 +11,10 @@ export default tseslint.config(
       "chrome-profile/**",
       "projects/**",
       "logs/**",
+      // whisper.cpp's own source, downloaded at runtime by `@remotion/install-whisper-cpp`
+      // (task 007, `WHISPER_CACHE_DIR`, default `./.whisper-cache`) the first time a real
+      // transcribe runs — not code this repo owns, and its own JS predates our parser config.
+      "**/.whisper-cache/**",
     ],
   },
   ...tseslint.configs.strictTypeChecked,
@@ -30,9 +34,13 @@ export default tseslint.config(
     },
   },
   {
-    // Root/package config files aren't included in any package's tsconfig, so
-    // type-aware rules can't run on them — lint as plain (non type-checked) TS/JS.
-    files: ["**/*.config.{js,mjs,ts}", "eslint.config.mjs"],
+    // Root/package config files, plus one-off dev scripts, aren't included in any package's
+    // tsconfig, so type-aware rules can't run on them — lint as plain (non type-checked) TS/JS.
+    files: [
+      "**/*.config.{js,mjs,ts}",
+      "eslint.config.mjs",
+      "be/src/render/fixtures/generate-fixtures.mjs",
+    ],
     extends: [tseslint.configs.disableTypeChecked],
   },
   eslintConfigPrettier,

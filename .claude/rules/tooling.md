@@ -14,6 +14,7 @@ A catalog of this project's tools, with **when to use** each, so future-session 
 - **ccf:check** — verify conformance/SOLID before marking a task `done`. **Use when:** a task's code + tests are complete.
 - **ccf:updatespec** — refresh the spec and mark a task `done`. **Use when:** `/ccf:check` passed.
 - **ccf:cook** — run the one-task-at-a-time loop across the whole backlog. **Use when:** implementing several tasks in sequence without re-invoking each by hand.
+- **write-video-script** (`.claude/skills/write-video-script/SKILL.md`, task 012) — 6-step forced workflow (research via WebSearch → premise/hook/payoff → raw prose draft → self-critique checklist → scene split + imagePrompt → export `scriptInputSchema` JSON) for writing a short-video script ready to `POST /api/projects`. **Use when:** a user asks to write a TikTok/Shorts script or JSON script input for flow-ex; not for long-form scripts or editing an already-valid script.
 
 ## Browser automation
 

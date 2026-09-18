@@ -15,7 +15,7 @@
 ## File structure
 
 - A file is at most ~300 lines; split if it exceeds.
-- Import order: node builtins → external packages (incl. workspace packages like `@flow-ex/shared-schemas`) → relative, each group separated by a blank line.
+- Import order: node builtins → external packages → workspace packages (e.g. `@flow-ex/shared-schemas`) → relative, each group separated by a blank line. A workspace package is its own group between third-party externals and relative imports (not folded into the external group) — this is what every file in `be/`/`fe/` since task 002/003 actually does, and it reads more clearly than merging the two.
 - Relative import extensions differ by package on purpose (see `tech-stack.md`): `be/`, `video/`, `packages/shared-schemas/` use a literal `.ts` extension (Node runs these directly); `fe/` uses no extension (Vite/bundler mode).
 
 ## General rules
