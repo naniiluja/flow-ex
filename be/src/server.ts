@@ -35,6 +35,7 @@ const app = buildApp({
     whisperCppVersion: env.WHISPER_CPP_VERSION,
   },
   imageConcurrency: env.FLOW_IMAGE_CONCURRENCY,
+  audioConcurrency: env.VBEE_AUDIO_CONCURRENCY,
 });
 
 async function start(): Promise<void> {

@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { AppError } from "../../domain/app-error.ts";
 import {
-  attachReferenceAssets,
+  attachUploadedReferenceImages,
   configureAspectRatioAndBatch,
   ensureAgentModeOff,
   ensureLoggedIn,
@@ -24,6 +24,16 @@ const FIXTURE_PATH = path.join(
   "fixtures/flow-page.fixture.html",
 );
 const SHORT_TIMEOUT_MS = 500;
+// Real PNG files (task 002's render fixtures) reused here purely as upload payloads, so the
+// upload path is exercised against actual bytes rather than a synthesized empty file.
+const SAMPLE_IMAGE_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../render/fixtures/sample-1.png",
+);
+const SECOND_SAMPLE_IMAGE_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../render/fixtures/sample-2.png",
+);
 
 /**
  * EP/BVA matrix, `flow-automation.ts`'s exported steps, against the hand-authored fixture
@@ -160,62 +170,70 @@ describe("flow-automation against the Flow fixture", () => {
     expect(tileCount).toBe(2); // the stale tile from scene one is still in the DOM
   });
 
-  // Task 013 EP/BVA matrix for attachReferenceAssets:
-  // | referenceNames         | Expected                                               |
-  // | ["Cô bán cà phê"]      | attaches once, prompt box untouched                    |
-  // | ["Cô bán cà phê"] x2   | attaches twice (two scenes reusing the same reference) |
-  // | ["Không tồn tại"]      | throws AppError FLOW_REFERENCE_ASSET_NOT_FOUND, fatal  |
-  it("attaches a known reference asset via the + picker", async () => {
+  // Task 015 v2 EP/BVA matrix for attachUploadedReferenceImages (replaces task 013's by-NAME
+  // `attachReferenceAssets`, retired after a real smoke run proved the by-name path unusable —
+  // see flow-automation.md):
+  // | filePaths                     | Expected                                                 |
+  // | [one real file]               | uploads + attaches that file, prompt box untouched       |
+  // | [same file] called twice      | attaches twice (two scenes reusing the same reference)   |
+  // | [fileA, fileB] in one call    | attaches BOTH, in order                                  |
+  it("uploads a reference image file and attaches it via the + picker", async () => {
     await loadFixture();
-    await attachReferenceAssets(page, ["Cô bán cà phê"], SHORT_TIMEOUT_MS);
+    await attachUploadedReferenceImages(page, [SAMPLE_IMAGE_PATH], SHORT_TIMEOUT_MS);
     const attached = await page.evaluate(
       () =>
         (window as unknown as { __flowFixtureAttachedReferences: string[] })
           .__flowFixtureAttachedReferences,
     );
-    expect(attached).toEqual(["Cô bán cà phê"]);
+    expect(attached).toEqual([path.basename(SAMPLE_IMAGE_PATH)]);
     // Attaching a reference must not itself type into the prompt editor.
     expect(await page.locator(".ProseMirror").textContent()).toBe("");
   });
 
-  it("attaches the same reference asset twice for two different scenes", async () => {
+  it("attaches the same reference file twice for two different scenes", async () => {
     await loadFixture();
-    await attachReferenceAssets(page, ["Cô bán cà phê"], SHORT_TIMEOUT_MS);
-    await attachReferenceAssets(page, ["Cô bán cà phê"], SHORT_TIMEOUT_MS);
+    await attachUploadedReferenceImages(page, [SAMPLE_IMAGE_PATH], SHORT_TIMEOUT_MS);
+    await attachUploadedReferenceImages(page, [SAMPLE_IMAGE_PATH], SHORT_TIMEOUT_MS);
     const attached = await page.evaluate(
       () =>
         (window as unknown as { __flowFixtureAttachedReferences: string[] })
           .__flowFixtureAttachedReferences,
     );
-    expect(attached).toEqual(["Cô bán cà phê", "Cô bán cà phê"]);
+    const base = path.basename(SAMPLE_IMAGE_PATH);
+    expect(attached).toEqual([base, base]);
   });
 
-  it("throws a fatal AppError when the reference asset does not exist in the picker", async () => {
+  it("attaches every file of a multi-reference scene, newest-first ordering and all", async () => {
     await loadFixture();
-    await expect(
-      attachReferenceAssets(page, ["Không tồn tại"], SHORT_TIMEOUT_MS),
-    ).rejects.toSatisfy(
-      (error: unknown) =>
-        error instanceof AppError &&
-        error.code === "FLOW_REFERENCE_ASSET_NOT_FOUND" &&
-        error.errorKind === "fatal",
+    await attachUploadedReferenceImages(
+      page,
+      [SAMPLE_IMAGE_PATH, SECOND_SAMPLE_IMAGE_PATH],
+      SHORT_TIMEOUT_MS,
     );
+    const attached = await page.evaluate(
+      () =>
+        (window as unknown as { __flowFixtureAttachedReferences: string[] })
+          .__flowFixtureAttachedReferences,
+    );
+    expect(attached).toEqual([
+      path.basename(SAMPLE_IMAGE_PATH),
+      path.basename(SECOND_SAMPLE_IMAGE_PATH),
+    ]);
   });
 
   /**
-   * Task 014 regression: proves the tile-index design survives 3 jobs submitted back-to-back on
-   * the SAME page (one job's `submitImage` runs only after the previous one released the mutex,
-   * matching real usage in `flow-image-provider.ts`), whose images then finish DECODING in a
-   * REVERSED order (job 3 first, job 1 last, via the fixture's injectable per-submit delay) —
-   * each job must still receive its OWN image, never one lifted from another job.
-   *
-   * This is exactly the scenario the OLD `collectExistingImageUuids`-diffing implementation
-   * could not survive: two/three calls sharing one "snapshot of existing UUIDs taken before
-   * MY click" would each resolve against whichever `<img>` (not-in-that-snapshot) appeared
-   * FIRST, regardless of which job's own click produced it — job 1's snapshot (taken before
-   * ANY of the 3 clicks even race to be first) would just as happily match job 3's fast image.
-   * The new design instead binds each job to the DOM tile index captured atomically with its
-   * own click while holding the shared-page mutex, so completion order cannot matter.
+   * Task 014 + bugfix regression: proves the tile-HANDLE design survives 3 jobs submitted
+   * back-to-back on the SAME page (one job's `submitImage` runs only after the previous one
+   * released the mutex, matching real usage in `flow-image-provider.ts`), whose images then
+   * finish DECODING in a REVERSED order (job 3 first, job 1 last, via the fixture's injectable
+   * per-submit delay) — each job must still receive its OWN image, never one lifted from another
+   * job. The fixture PREPENDS each new tile (matching Flow's real, live-verified behavior,
+   * ../../.claude/rules/flow-automation.md), which is exactly the condition that broke the
+   * ORIGINAL task-014 design: an index captured as "count before my click" pointed at a
+   * DIFFERENT, already-decoded (older) tile once a later job's own tile got prepended in front of
+   * it — every job after the first would silently receive an older job's already-finished image.
+   * Binding each job to an `ElementHandle` pinned to its own tile node at click time, instead of a
+   * DOM index, survives any number of later prepends.
    */
   it("keeps each job's own image even when 3 jobs finish decoding in REVERSED order (task 014)", async () => {
     await loadFixture();
@@ -232,7 +250,7 @@ describe("flow-automation against the Flow fixture", () => {
         await typeIntoPromptBox(page, prompt);
         return submitImage(page, 5_000);
       });
-      const image = await waitForImageAtTile(page, submission.tileIndex, 5_000);
+      const image = await waitForImageAtTile(page, submission.tileHandle, 5_000);
       return { prompt, uuid: image.uuid };
     }
 

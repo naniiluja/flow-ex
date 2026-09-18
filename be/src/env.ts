@@ -58,6 +58,16 @@ const envSchema = z.object({
     .optional()
     .transform((value) => (value ? Number(value) : 3))
     .pipe(z.number().int().positive()),
+  // Task 014-audio (2026-09-18, user request: "gen ảnh bất đồng bộ thì gen tiếng cũng bất đồng bộ
+  // luôn đi"): how many scenes' audio steps run CONCURRENTLY against the Vbee HTTP API. Unlike
+  // Flow (one shared browser page), each Vbee call is an independent HTTP request, so real
+  // concurrency here has no shared-page mutex to serialize around — only Vbee's own rate limit
+  // bounds it, which `retryWithSchedule`'s existing 429 handling already covers per request.
+  VBEE_AUDIO_CONCURRENCY: z
+    .string()
+    .optional()
+    .transform((value) => (value ? Number(value) : 3))
+    .pipe(z.number().int().positive()),
 });
 
 export type Env = z.infer<typeof envSchema>;

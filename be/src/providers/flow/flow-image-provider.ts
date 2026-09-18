@@ -9,9 +9,12 @@ import type {
   GeneratedImage,
   ImageGenerationContext,
   ImageProvider,
+  ReferenceGenerationContext,
 } from "../../domain/providers.ts";
 import { connectToFlowChrome } from "./chrome-connection.ts";
 import {
+  attachUploadedReferenceImages,
+  closeReferencePickerIfOpen,
   configureAspectRatioAndBatch,
   ensureAgentModeOff,
   ensureLoggedIn,
@@ -61,13 +64,19 @@ export function toDomainError(error: unknown): AppError {
 export async function captureErrorArtifacts(
   page: Page,
   assetsDir: string,
-  sceneIndex: number,
+  /** A scene index (padded, matching every other artifact/asset file name in this provider) OR a
+   * reference id string (task 015's `generateReferenceImage`, which has no scene index). */
+  sceneIndexOrReferenceId: number | string,
   logger: Logger | undefined,
 ): Promise<string | undefined> {
   try {
     const projectRoot = path.dirname(assetsDir);
     const artifactsDir = path.join(projectRoot, "logs", "flow-errors");
-    const stamp = `${String(sceneIndex).padStart(3, "0")}-${String(Date.now())}`;
+    const label =
+      typeof sceneIndexOrReferenceId === "number"
+        ? String(sceneIndexOrReferenceId).padStart(3, "0")
+        : `reference-${sceneIndexOrReferenceId}`;
+    const stamp = `${label}-${String(Date.now())}`;
     await fs.mkdir(artifactsDir, { recursive: true });
     await page.screenshot({ path: path.join(artifactsDir, `${stamp}.png`) });
     await fs.writeFile(path.join(artifactsDir, `${stamp}.html`), await page.content());
@@ -79,7 +88,7 @@ export async function captureErrorArtifacts(
     // become the error that surfaces. Still logged (error-handling.md's "No silent catch" — a
     // caught error must be logged or rethrown, never dropped silently either way).
     logger?.warn(
-      { sceneIndex, err: { message: String(captureError) } },
+      { sceneIndexOrReferenceId, err: { message: String(captureError) } },
       "flow.image.artifact_capture.error",
     );
     return undefined;
@@ -186,15 +195,25 @@ export function createFlowImageProvider(options: FlowImageProviderOptions): Imag
       // concurrently-running OTHER scene can't interleave its own typing or misidentify which
       // tile is its own (task 014).
       const pageForSubmit = page;
+      const referenceImageFiles = ctx.referenceImageFiles ?? [];
       const submission = await submitMutex.runExclusive(async () => {
+        // A PRIOR failed attempt for this scene (or another) can leave the reference picker
+        // open, blocking every click below it — close it first so every retry starts clean.
+        await closeReferencePickerIfOpen(pageForSubmit);
         await ensureAgentModeOff(pageForSubmit);
         await configureAspectRatioAndBatch(pageForSubmit, ctx.aspectRatio);
+        // Task 015 v2: attach every reference (character/setting) this scene should stay consistent
+        // with BEFORE typing the scene's own prompt text — uploading inserts an inline chip into
+        // the SAME prompt box without touching its text content (image-prompting.md).
+        if (referenceImageFiles.length > 0) {
+          await attachUploadedReferenceImages(pageForSubmit, referenceImageFiles);
+        }
         await typeIntoPromptBox(pageForSubmit, prompt);
         return submitImage(pageForSubmit);
       });
       // The decode wait (~25-30s observed live) runs OUTSIDE the mutex: multiple scenes each
-      // await their own tile index here in parallel once their own submission has been recorded.
-      const generated = await waitForImageAtTile(page, submission.tileIndex);
+      // await their own tile handle here in parallel once their own submission has been recorded.
+      const generated = await waitForImageAtTile(page, submission.tileHandle);
 
       const { buffer, extension } = await downloadImage(context, generated.src);
       // Flow's own generation UUID (unique per submit, flow-automation.md) makes the file name
@@ -229,5 +248,62 @@ export function createFlowImageProvider(options: FlowImageProviderOptions): Imag
     }
   }
 
-  return { generateImage };
+  /** Task 015 v2: generates a project-level reference image (pipeline phase 0, before any scene's
+   * own image step) with the EXACT SAME plain generate-and-download flow a normal scene image
+   * uses — no separate Flow "Nhân vật" creation route, no in-Flow rename/save step, nothing that
+   * navigates the shared page away from the main canvas. The downloaded file is what later scenes
+   * reattach by upload (`attachUploadedReferenceImages`), so the generated image never needs to
+   * exist as a NAMED Flow asset at all. `name` is used for logging only. */
+  async function generateReferenceImage(
+    prompt: string,
+    name: string,
+    ctx: ReferenceGenerationContext,
+  ): Promise<GeneratedImage> {
+    const logFields = { projectId: ctx.projectId, referenceId: ctx.referenceId, name };
+    ctx.logger?.info(logFields, "flow.reference.generate");
+    let page: Page | undefined;
+    try {
+      const connected = await getConnection();
+      page = connected.page;
+      const { context } = connected;
+      await ensureLoggedIn(page);
+      const pageForSubmit = page;
+      const submission = await submitMutex.runExclusive(async () => {
+        await closeReferencePickerIfOpen(pageForSubmit);
+        await ensureAgentModeOff(pageForSubmit);
+        await typeIntoPromptBox(pageForSubmit, prompt);
+        return submitImage(pageForSubmit);
+      });
+      const generated = await waitForImageAtTile(page, submission.tileHandle);
+
+      const { buffer, extension } = await downloadImage(context, generated.src);
+      // The reference's own `id` is unique per project and this generation only ever runs once per
+      // reference (no "Sinh lại" for references in this scope), so it is a safe, stable file name —
+      // no need for the per-call UUID suffix `generateImage` uses for its regenerate variants.
+      const fileName = `${ctx.referenceId}.${extension}`;
+      const referencesDir = path.join(options.assetsDir, "references");
+      await fs.mkdir(referencesDir, { recursive: true });
+      await fs.writeFile(path.join(referencesDir, fileName), buffer);
+
+      ctx.logger?.info(logFields, "flow.reference.generate.success");
+      return { file: `references/${fileName}`, width: generated.width, height: generated.height };
+    } catch (error) {
+      const domainError = toDomainError(error);
+      const artifactsDir =
+        page !== undefined
+          ? await captureErrorArtifacts(page, options.assetsDir, ctx.referenceId, ctx.logger)
+          : undefined;
+      ctx.logger?.error(
+        {
+          ...logFields,
+          err: { code: domainError.code, message: domainError.message },
+          artifactsDir,
+        },
+        "flow.reference.generate.error",
+      );
+      throw domainError;
+    }
+  }
+
+  return { generateImage, generateReferenceImage };
 }

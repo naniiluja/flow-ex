@@ -2,7 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { AppError } from "../../domain/app-error.ts";
-import type { ImageGenerationContext, ImageProvider } from "../../domain/providers.ts";
+import type {
+  ImageGenerationContext,
+  ImageProvider,
+  ReferenceGenerationContext,
+} from "../../domain/providers.ts";
 import { makeSolidColorPng, type RgbColor } from "./synthetic-media.ts";
 
 const DEFAULT_WIDTH = 1920;
@@ -87,5 +91,23 @@ export function createFakeImageProvider(options: FakeImageProviderOptions): Imag
     return { file: `images/${fileName}`, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
   }
 
-  return { generateImage };
+  /** Test/dev-only counterpart to `FlowImageProvider.generateReferenceImage` (task 015): writes a
+   * real, decodable solid-color PNG under `references/<referenceId>.png` so the pipeline's phase
+   * 0 (reference generation) can be exercised end to end in tests without Flow. */
+  async function generateReferenceImage(
+    _prompt: string,
+    _name: string,
+    context: ReferenceGenerationContext,
+  ): Promise<{ file: string; width: number; height: number }> {
+    const referencesDir = path.join(options.assetsDir, "references");
+    await fs.mkdir(referencesDir, { recursive: true });
+    const fileName = `${context.referenceId}.png`;
+    await fs.writeFile(
+      path.join(referencesDir, fileName),
+      makeSolidColorPng(DEFAULT_WIDTH, DEFAULT_HEIGHT, { r: 120, g: 120, b: 120 }),
+    );
+    return { file: `references/${fileName}`, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
+  }
+
+  return { generateImage, generateReferenceImage };
 }

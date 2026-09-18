@@ -20,10 +20,15 @@ export function alignCaptionsToNarration(captions: Caption[], narration: string)
   if (words.length !== captions.length || words.length === 0) {
     return captions;
   }
-  return captions.map((caption, index) => ({
-    // Every token but the first keeps a leading space (video.md's Captions convention: "each
-    // token keeps its leading space exactly as returned" by whisper/createTikTokStyleCaptions).
-    ...caption,
-    text: index === 0 ? words[0] : ` ${words[index]}`,
-  }));
+  return captions.map((caption, index) => {
+    // `words.length === captions.length` was just checked above, so `words[index]` is always
+    // defined here; the `?? ""` is only to satisfy `noUncheckedIndexedAccess`, never a real fallback.
+    const word = words[index] ?? "";
+    return {
+      // Every token but the first keeps a leading space (video.md's Captions convention: "each
+      // token keeps its leading space exactly as returned" by whisper/createTikTokStyleCaptions).
+      ...caption,
+      text: index === 0 ? word : ` ${word}`,
+    };
+  });
 }

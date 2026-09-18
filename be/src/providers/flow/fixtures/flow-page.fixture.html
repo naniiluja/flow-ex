@@ -59,13 +59,20 @@
 
     <!--
       Task 013, verified live 2026-09-17: clicking `.add-menu-trigger` opens this asset picker.
-      Fixture ships exactly one pre-existing asset ("Cô bán cà phê") so a test can drive the real
-      search-then-click-then-add flow (`attachReferenceAssets` in flow-automation.ts) without a
-      live Flow account.
+      Task 015 v2, verified live 2026-09-18: the picker's own sidebar carries an upload control
+      (`button.sidebar-upload-btn`, "Tải nội dung nghe nhìn lên") that fires a NATIVE file chooser
+      — no `<input type=file>` sits in the real page's DOM at rest, so the automation intercepts
+      Playwright's `filechooser` event instead. This fixture reproduces that shape with a hidden
+      `<input type=file>` the button clicks programmatically (which is what makes Chromium raise
+      the same `filechooser` event), then PREPENDS the uploaded item to the asset list, mirroring
+      Flow's own "Gần đây"/most-recent-first ordering that `attachUploadedReferenceImages` relies
+      on when it picks `.asset-item` `.first()`.
     -->
     <div id="asset-picker" hidden>
       <input class="editable-text-input" placeholder="Tìm kiếm thành phần" />
-      <div role="listbox">
+      <button class="sidebar-upload-btn" type="button">Tải nội dung nghe nhìn lên</button>
+      <input id="upload-file-input" type="file" accept="image/*" hidden />
+      <div role="listbox" id="asset-list">
         <div class="asset-item" data-name="Cô bán cà phê">Cô bán cà phê</div>
       </div>
       <div id="asset-detail" hidden>
@@ -99,6 +106,11 @@
       const assetDetail = document.getElementById("asset-detail");
       const addToPromptBtn = assetPicker.querySelector(".detail-add-to-prompt-btn");
 
+      const assetList = document.getElementById("asset-list");
+      const sidebarUploadBtn = assetPicker.querySelector(".sidebar-upload-btn");
+      const uploadFileInput = document.getElementById("upload-file-input");
+      let selectedAssetName = null;
+
       addMenuTrigger.addEventListener("click", () => {
         assetPicker.hidden = false;
       });
@@ -108,17 +120,39 @@
           item.style.display = item.dataset.name.toLowerCase().includes(query) ? "" : "none";
         }
       });
-      for (const item of assetPicker.querySelectorAll(".asset-item")) {
+      function wireAssetItem(item) {
         item.addEventListener("click", () => {
+          selectedAssetName = item.dataset.name;
           assetDetail.hidden = false;
         });
       }
+      for (const item of assetPicker.querySelectorAll(".asset-item")) {
+        wireAssetItem(item);
+      }
+      // Clicking the sidebar upload button raises the same native file chooser the real page does.
+      sidebarUploadBtn.addEventListener("click", () => {
+        uploadFileInput.click();
+      });
+      uploadFileInput.addEventListener("change", () => {
+        const file = uploadFileInput.files[0];
+        if (!file) {
+          return;
+        }
+        const item = document.createElement("div");
+        item.className = "asset-item";
+        item.dataset.name = file.name;
+        item.textContent = file.name;
+        wireAssetItem(item);
+        // Most-recent-first, matching the real picker's own ordering.
+        assetList.insertBefore(item, assetList.firstChild);
+      });
       addToPromptBtn.addEventListener("click", () => {
         window.__flowFixtureAttachedReferences = window.__flowFixtureAttachedReferences || [];
-        window.__flowFixtureAttachedReferences.push(assetSearchInput.value);
+        window.__flowFixtureAttachedReferences.push(selectedAssetName ?? assetSearchInput.value);
         assetPicker.hidden = true;
         assetDetail.hidden = true;
         assetSearchInput.value = "";
+        selectedAssetName = null;
       });
 
       function syncSettingsVisibility() {
@@ -156,7 +190,11 @@
         const pending = document.createElement("flow-pending-tile");
         pending.textContent = "image 40%";
         tile.appendChild(pending);
-        tiles.appendChild(tile);
+        // Verified live 2026-09-17 against a real open Flow project page (task 015 bugfix): a new
+        // submission PREPENDS its tile at the front of the list, not append at the end — the
+        // opposite of what task 014 originally assumed. Reproduced here so the fixture matches
+        // reality (../../.claude/rules/flow-automation.md's "Tile identity" section).
+        tiles.insertBefore(tile, tiles.firstChild);
         window.__flowFixtureGenerationCount = (window.__flowFixtureGenerationCount || 0) + 1;
         // Each generation gets a DIFFERENT uuid (padded from the running counter), so a test
         // driving two consecutive submits on the SAME page can prove `submitAndWaitForImage`

@@ -1,11 +1,31 @@
-import { loadFont } from "@remotion/google-fonts/BeVietnamPro";
+import { loadFont } from "@remotion/google-fonts/Inter";
 import { continueRender, delayRender } from "remotion";
 
-/** The only subset that actually ships Vietnamese diacritic glyphs (ơ, ệ, ữ...) — `latin` and
- * `latin-ext` do not cover them (../../.claude/rules/video.md's Captions rule). Every call MUST
- * include it or the rendered captions will show broken/missing diacritics. */
+/** The subset that ships Vietnamese diacritic glyphs (ơ, ệ, ữ...) — `latin`/`latin-ext` alone do
+ * not cover them (../../.claude/rules/video.md's Captions rule). Every call MUST include it or
+ * Vietnamese diacritics will not render. **This subset alone is NOT enough**: Google Fonts scopes
+ * each subset file by a CSS `unicode-range`, and "vietnamese" does not cover plain ASCII —
+ * `tiktok-captions.tsx` MUST also request `"latin"` alongside this one, or every plain letter
+ * (C, n, g, s...) silently falls back to the browser's default serif while only the diacritic
+ * letters use the loaded font. Found 2026-09-18: EVERY real render since task 008 had this
+ * exact per-character font mix, invisible unless you zoom into a real rendered frame and check
+ * plain-ASCII letterforms specifically (checking only the diacritics, as earlier verification
+ * passes did, hides it completely). */
 const REQUIRED_SUBSET = "vietnamese";
 
+// TRIED Montserrat as a replacement (2026-09-18) after user feedback that captions kept looking
+// "bể". REVERTED THE SAME DAY: a real render of the word "cửa" (c + ử + a) came back as "c??a" —
+// Montserrat's `vietnamese` subset in this @remotion/google-fonts version is missing the
+// horn+hook-above combination glyph (ử), a genuine tofu/missing-glyph bug, not a stroke/rendering
+// nit. Do not re-attempt Montserrat without first checking its glyph coverage for every
+// Vietnamese diacritic combination in an actual rendered frame, not just a visual read.
+//
+// THEN tried Inter as an SF-Pro-like alternative (2026-09-18, user asked for an Apple-style
+// font — SF Pro itself is not a Google Font and cannot be embedded here). Investigating why Inter
+// (and, in hindsight, Be Vietnam Pro before it) still looked serif in real renders is what
+// surfaced the missing-"latin"-subset bug documented on `REQUIRED_SUBSET` above; that was the
+// real, long-standing cause of every prior "bể font" complaint, not the font family choice
+// itself. Keeping Inter now that the real bug is fixed.
 const ALLOWED_WEIGHTS = ["700", "800"] as const;
 export type CaptionFontWeight = (typeof ALLOWED_WEIGHTS)[number];
 

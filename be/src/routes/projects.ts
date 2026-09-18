@@ -22,17 +22,16 @@ import type { ProjectStore } from "../store/project-store.ts";
  * shape as `logPipelineEventSchema` (missing `type: "log"`, and carrying `err` which that strict
  * schema rejects). Parsed defensively per line: a line this shape check rejects is skipped rather
  * than failing the whole read, since the file is append-only application data, not a contract. */
-const ndjsonLogLineSchema = z
-  .object({
-    level: z.enum(["info", "warn", "error"]),
-    time: z.number(),
-    projectId: z.uuid(),
-    runId: z.uuid(),
-    stage: z.string(),
-    msg: z.string(),
-    sceneIndex: z.number().int().nonnegative().optional(),
-    attempt: z.number().int().nonnegative().optional(),
-  });
+const ndjsonLogLineSchema = z.object({
+  level: z.enum(["info", "warn", "error"]),
+  time: z.number(),
+  projectId: z.uuid(),
+  runId: z.uuid(),
+  stage: z.string(),
+  msg: z.string(),
+  sceneIndex: z.number().int().nonnegative().optional(),
+  attempt: z.number().int().nonnegative().optional(),
+});
 
 /** Cap matches the FE's own `MAX_LOG_LINES` (`use-project-events.ts`) — the two together bound
  * how many lines a client ever holds for one project, whether from history or the live tail. */

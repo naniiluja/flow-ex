@@ -75,6 +75,17 @@ export function createWhisperTranscriptionProvider(
         whisperCppVersion: options.whisperCppVersion,
         model: options.model,
         tokenLevelTimestamps: true,
+        // Without this, whisper.cpp reports timing per raw BPE sub-word token, not per whole
+        // word — a Vietnamese word like "cửa" can split into 2-3 tokens whose INDIVIDUAL byte
+        // sequences are not valid standalone UTF-8 (a multi-byte diacritic split mid-character),
+        // which whisper.cpp then renders as U+FFFD ("cửa" -> "c??a"). It also makes
+        // `alignCaptionsToNarration`'s token-count === narration-word-count guard fail almost
+        // every multi-syllable Vietnamese word, so the (already garbled) whisper text was never
+        // even replaced by the known-good narration text. `splitOnWord: true` makes whisper.cpp
+        // group tokens into whole words itself (its own internal merge does not have this
+        // byte-splitting problem), fixing both issues at once. Found 2026-09-18 via a real
+        // reference-image smoke run whose caption read "c??a sổ" instead of "cửa sổ".
+        splitOnWord: true,
         language: "vi",
       });
       const { captions: whisperCaptions } = toCaptions({ whisperCppOutput: whisperOutput });

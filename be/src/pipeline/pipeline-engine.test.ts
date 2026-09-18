@@ -71,6 +71,7 @@ function buildEngine(
     baseLogger?: Logger;
     transcriptionProvider?: TranscriptionProvider;
     imageConcurrency?: number;
+    audioConcurrency?: number;
     signal?: AbortSignal;
   } = {},
 ) {
@@ -85,6 +86,7 @@ function buildEngine(
     videoRenderer: overrides.videoRenderer ?? NOOP_RENDERER,
     eventBus: overrides.eventBus,
     imageConcurrency: overrides.imageConcurrency,
+    audioConcurrency: overrides.audioConcurrency,
     signal: overrides.signal,
   });
 }
@@ -705,4 +707,263 @@ describe("createPipelineEngine — concurrent image phase (task 014)", () => {
     const finalProject = await store.read(project.id);
     expect(finalProject.runStatus).toBe("failed"); // never hung; the run resolved to a terminal state
   }, 10_000);
+});
+
+/**
+ * Task 014-audio: EP/BVA matrix for the concurrent audio phase (mirrors the image phase's own
+ * matrix above — same shape, different provider/step under test). Images resolve instantly here
+ * (real time only comes from the fake `TtsProvider`), so this phase's own concurrency win is
+ * isolated from the (already proven above) image phase.
+ *
+ * | Scenario                                                    | Expected                                |
+ * | -------------------------------------------------------------- | -------------------------------------------- |
+ * | audioConcurrency 1 (BVA min)                                     | all scenes still complete, correctly assigned |
+ * | audioConcurrency 3 (default)                                       | wall time < sequential time; no cross-scene mixup |
+ * | audioConcurrency greater than scene count                            | no crash, all scenes complete once           |
+ * | one scene's audio fails partway through the batch                       | the other scenes still complete normally  |
+ */
+describe("createPipelineEngine — concurrent audio phase (task 014-audio)", () => {
+  let root: string;
+  let store: ProjectStore;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "flow-ex-pipeline-audio-concurrency-"));
+    store = createProjectStore(root);
+  });
+
+  afterEach(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  const SCRIPT_6_SCENES: ScriptInput = {
+    title: "Sau canh am thanh",
+    voice: "hn_female_ngochuyen_full_48k-fhg",
+    aspectRatio: "16:9",
+    preset: "youtube",
+    reviewEnabled: false,
+    references: [],
+    scenes: Array.from({ length: 6 }, (_, i) => ({
+      narration: `Canh so ${String(i)}`,
+      imagePrompt: `prompt ${String(i)}`,
+      referenceIds: [],
+    })),
+  };
+
+  const INSTANT_IMAGE_PROVIDER: ImageProvider = {
+    generateImage: (_prompt, ctx) =>
+      Promise.resolve({
+        file: `images/${String(ctx.sceneIndex)}.png`,
+        width: 1920,
+        height: 1080,
+      }),
+  };
+
+  // Large enough that the artificial delay dominates over real store.update()/disk I/O overhead.
+  const AUDIO_DELAY_MS = 300;
+
+  /** Embeds `sceneIndex` into the returned file name so a test can assert each scene's PERSISTED
+   * `audioFile` matches ITS OWN sceneIndex, not a neighbor's — the exact class of bug a
+   * concurrency race would produce (the real bug this task fixed: `runAudioStep` reading the
+   * shared outer `project` variable instead of a fresh store read). */
+  function delayedTtsProvider(): TtsProvider {
+    return {
+      synthesize: vi.fn<TtsProvider["synthesize"]>(async (_narration, ctx) => {
+        await new Promise((resolve) => setTimeout(resolve, AUDIO_DELAY_MS));
+        return { file: `audio/${String(ctx.sceneIndex)}-generated.mp3`, durationMs: 1000 };
+      }),
+    };
+  }
+
+  it.each([1, 3, 10])(
+    "with audioConcurrency %i, every scene completes and keeps its OWN audio file",
+    async (audioConcurrency) => {
+      const project = await store.create(SCRIPT_6_SCENES);
+      const ttsProvider = delayedTtsProvider();
+
+      const result = await buildEngine(store, INSTANT_IMAGE_PROVIDER, ttsProvider, {
+        audioConcurrency,
+      }).run(project.id);
+
+      expect(result.runStatus).toBe("completed");
+      result.scenes.forEach((scene, sceneIndex) => {
+        expect(scene.status).toBe("ready_for_render");
+        expect(scene.audioFile).toBe(`audio/${String(sceneIndex)}-generated.mp3`);
+      });
+    },
+  );
+
+  it("with the default concurrency, wall time is well under the fully-sequential baseline", async () => {
+    const project = await store.create(SCRIPT_6_SCENES);
+    const ttsProvider = delayedTtsProvider();
+
+    const startedAt = Date.now();
+    await buildEngine(store, INSTANT_IMAGE_PROVIDER, ttsProvider, { audioConcurrency: 3 }).run(
+      project.id,
+    );
+    const elapsedMs = Date.now() - startedAt;
+    const sequentialBaselineMs = SCRIPT_6_SCENES.scenes.length * AUDIO_DELAY_MS;
+
+    // 6 scenes at concurrency 3 -> 2 batches, so the audio phase alone should be roughly
+    // 2*AUDIO_DELAY_MS, well under 60% of the 6*AUDIO_DELAY_MS sequential baseline.
+    expect(elapsedMs).toBeLessThan(sequentialBaselineMs * 0.6);
+  });
+
+  it("one scene's audio failure does not stop the OTHER scenes from completing their audio step", async () => {
+    const project = await store.create(SCRIPT_6_SCENES);
+    const persistentError = new AppError({
+      code: "VBEE_DOWN",
+      errorKind: "transient",
+      message: "scene 2 always fails",
+    });
+    const synthesize = vi
+      .fn<TtsProvider["synthesize"]>()
+      .mockImplementation(async (_narration, ctx) => {
+        await new Promise((resolve) => setTimeout(resolve, AUDIO_DELAY_MS));
+        if (ctx.sceneIndex === 2) {
+          throw persistentError;
+        }
+        return { file: `audio/${String(ctx.sceneIndex)}.mp3`, durationMs: 1000 };
+      });
+
+    await expect(
+      buildEngine(store, INSTANT_IMAGE_PROVIDER, { synthesize }, { audioConcurrency: 3 }).run(
+        project.id,
+      ),
+    ).rejects.toBe(persistentError);
+
+    const finalProject = await store.read(project.id);
+    expect(finalProject.runStatus).toBe("failed");
+    finalProject.scenes.forEach((scene, sceneIndex) => {
+      if (sceneIndex === 2) {
+        expect(scene.status).toBe("failed");
+      } else {
+        // Every OTHER scene's audio step still ran to completion despite scene 2's failure.
+        expect(scene.audioFile).toBe(`audio/${String(sceneIndex)}.mp3`);
+      }
+    });
+  });
+});
+
+/**
+ * Task 015 contract matrix for phase 0 (reference/character-setting image generation):
+ *
+ * | references[] / referenceIds state                          | Expected                                  |
+ * | ------------------------------------------------------------ | -------------------------------------------- |
+ * | 1 reference, 1 scene attaches it                                | reference generated ONCE, before the scene's image call, scene's generateImage sees referenceNames |
+ * | reference already has imageFile (resume)                       | generateReferenceImage never called again  |
+ * | project has references[] but provider has no generateReferenceImage | run fails fatal, references[].imageFile still unset |
+ */
+describe("createPipelineEngine — reference (character/setting) phase 0", () => {
+  let root: string;
+  let store: ProjectStore;
+
+  const SCRIPT_WITH_REFERENCE: ScriptInput = {
+    title: "Co Lan ban ca phe",
+    voice: "hn_female_ngochuyen_full_48k-fhg",
+    aspectRatio: "9:16",
+    preset: "tiktok",
+    reviewEnabled: false,
+    references: [
+      { id: "co-lan", kind: "character", name: "Cô Lan", prompt: "a woman selling coffee" },
+    ],
+    scenes: [
+      {
+        narration: "Xin chao",
+        imagePrompt: "Cô Lan pours coffee at dawn",
+        referenceIds: ["co-lan"],
+      },
+    ],
+  };
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "flow-ex-pipeline-engine-reference-"));
+    store = createProjectStore(root);
+  });
+
+  afterEach(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("generates the reference once, before the scene's own image call, and passes its downloaded file path through", async () => {
+    const project = await store.create(SCRIPT_WITH_REFERENCE);
+    const callOrder: string[] = [];
+    const generateReferenceImage = vi
+      .fn<NonNullable<ImageProvider["generateReferenceImage"]>>()
+      .mockImplementation((_prompt, name) => {
+        callOrder.push(`reference:${name}`);
+        return Promise.resolve({ file: "references/co-lan.png", width: 1024, height: 1024 });
+      });
+    const generateImage = vi
+      .fn<ImageProvider["generateImage"]>()
+      .mockImplementation((_prompt, ctx) => {
+        // Only the BASENAME is asserted: the full value is an absolute path under the test's own
+        // temp `projectsRoot`, which differs per run.
+        const attached = (ctx.referenceImageFiles ?? []).map((file) => path.basename(file));
+        callOrder.push(`scene:${String(ctx.sceneIndex)}:${JSON.stringify(attached)}`);
+        return Promise.resolve({ file: "images/000.png", width: 1080, height: 1920 });
+      });
+    const synthesize = vi
+      .fn<TtsProvider["synthesize"]>()
+      .mockResolvedValue({ file: "audio/000.mp3", durationMs: 1000 });
+
+    const finalProject = await buildEngine(
+      store,
+      { generateImage, generateReferenceImage },
+      { synthesize },
+    ).run(project.id);
+
+    expect(generateReferenceImage).toHaveBeenCalledTimes(1);
+    expect(generateReferenceImage.mock.calls[0]?.[0]).toBe("a woman selling coffee");
+    expect(generateReferenceImage.mock.calls[0]?.[1]).toBe("Cô Lan");
+    expect(callOrder).toEqual(["reference:Cô Lan", 'scene:0:["co-lan.png"]']);
+    expect(finalProject.references[0]?.imageFile).toBe("references/co-lan.png");
+    expect(finalProject.runStatus).toBe("completed");
+  });
+
+  it("skips reference generation on resume when imageFile is already set", async () => {
+    const project = await store.create(SCRIPT_WITH_REFERENCE);
+    await store.update(project.id, (p) => {
+      const references = [...p.references];
+      const current = references[0];
+      if (current === undefined) {
+        throw new Error("test setup: expected SCRIPT_WITH_REFERENCE to have one reference");
+      }
+      references[0] = { ...current, imageFile: "references/co-lan.png" };
+      return { ...p, references };
+    });
+    const generateReferenceImage = vi
+      .fn<NonNullable<ImageProvider["generateReferenceImage"]>>()
+      .mockResolvedValue({ file: "references/co-lan.png", width: 1024, height: 1024 });
+    const generateImage = vi
+      .fn<ImageProvider["generateImage"]>()
+      .mockResolvedValue({ file: "images/000.png", width: 1080, height: 1920 });
+    const synthesize = vi
+      .fn<TtsProvider["synthesize"]>()
+      .mockResolvedValue({ file: "audio/000.mp3", durationMs: 1000 });
+
+    await buildEngine(store, { generateImage, generateReferenceImage }, { synthesize }).run(
+      project.id,
+    );
+
+    expect(generateReferenceImage).not.toHaveBeenCalled();
+  });
+
+  it("fails the run with a fatal error when the provider has no generateReferenceImage", async () => {
+    const project = await store.create(SCRIPT_WITH_REFERENCE);
+    const generateImage = vi.fn<ImageProvider["generateImage"]>();
+    const synthesize = vi.fn<TtsProvider["synthesize"]>();
+
+    await expect(
+      buildEngine(store, { generateImage }, { synthesize }).run(project.id),
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof AppError &&
+        error.code === "IMAGE_PROVIDER_MISSING_REFERENCE_SUPPORT" &&
+        error.errorKind === "fatal",
+    );
+    expect(generateImage).not.toHaveBeenCalled();
+    const finalProject = await store.read(project.id);
+    expect(finalProject.references[0]?.imageFile).toBeUndefined();
+    expect(finalProject.runStatus).toBe("failed");
+  });
 });

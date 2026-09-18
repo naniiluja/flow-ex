@@ -17,13 +17,23 @@ export interface ImageGenerationContext {
    * run-log file or the SSE stream). `FlowImageProvider` uses it for `flow.image.generate`'s
    * entry/exit; a stateless provider like `FakeImageProvider` ignores it. */
   logger?: Logger;
-  /** Paths (relative to the project's assets folder) to already-generated reference images this
-   * scene should stay visually consistent with (task 013's `references[]`/`referenceIds`), e.g. a
-   * character or setting generated once via Flow's own "Nhân vật"/"Cảnh" asset picker
-   * (../../.claude/rules/flow-automation.md's reference-image section). Empty/undefined means the
-   * scene has no reference to attach; `FakeImageProvider` records it for test assertions but does
-   * not act on it. */
+  /** Absolute filesystem paths to already-generated reference images (task 013/015's
+   * `references[]`/`referenceIds`) this scene should stay visually consistent with. Attached by
+   * UPLOADING the file directly into Flow's "+" picker
+   * (../../.claude/rules/flow-automation.md's reference-image section) rather than searching by
+   * name — Flow's own by-name search in that picker was verified live NOT to actually filter the
+   * result list, and the separate "Nhân vật" (character) creation route it would otherwise require
+   * proved fragile in practice (viewport-dependent selectors, a rename step that silently failed
+   * to persist). Empty/undefined means the scene has no reference to attach; `FakeImageProvider`
+   * ignores it (a stateless fake has no Flow picker to drive). */
   referenceImageFiles?: string[];
+}
+
+export interface ReferenceGenerationContext {
+  projectId: string;
+  /** The `references[].id` this generation is for — used only for logging/artifact file naming. */
+  referenceId: string;
+  logger?: Logger;
 }
 
 export interface GeneratedImage {
@@ -35,6 +45,20 @@ export interface GeneratedImage {
 
 export interface ImageProvider {
   generateImage(prompt: string, context: ImageGenerationContext): Promise<GeneratedImage>;
+  /** Generates a project-level "Nhân vật"/"Cảnh" reference image ONCE (pipeline-engine.ts's phase
+   * 0, before any scene's own image step) from a plain text description — the same plain
+   * generate-and-download flow as a normal scene image, no separate character-creation route and
+   * no in-Flow rename/save step needed. `name` is kept for logging only; the generated file is
+   * later reattached to scenes by FILE UPLOAD (`ImageGenerationContext.referenceImageFiles`), not
+   * by name lookup. Optional: a provider with no reference-generation capability (a minimal stub
+   * `ImageProvider` in a test that never uses `references[]`) simply omits it; `pipeline-engine.ts`'s
+   * phase 0 throws a clear `fatal` `AppError` if a real project ever needs it from a provider that
+   * lacks it, rather than silently skipping reference generation. */
+  generateReferenceImage?(
+    prompt: string,
+    name: string,
+    context: ReferenceGenerationContext,
+  ): Promise<GeneratedImage>;
 }
 
 export interface ExistingAudioRequest {

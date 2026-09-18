@@ -29,9 +29,9 @@ vi.mock("remotion", async () => {
 });
 
 let waitUntilDoneImpl: () => Promise<undefined> = () => Promise.resolve(undefined);
-vi.mock("@remotion/google-fonts/BeVietnamPro", () => ({
+vi.mock("@remotion/google-fonts/Inter", () => ({
   loadFont: () => ({
-    fontFamily: "Be Vietnam Pro",
+    fontFamily: "Inter",
     fonts: {},
     unicodeRanges: {},
     waitUntilDone: waitUntilDoneImpl,

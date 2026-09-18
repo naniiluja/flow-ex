@@ -10,6 +10,8 @@ export type {
   PresetConfig,
   SceneCountRange,
 } from "./presets.ts";
+export { DEFAULT_VOICE_CODE, VOICE_OPTIONS } from "./voices.ts";
+export type { VoiceOption } from "./voices.ts";
 
 /** Bumped from 1 to 2 in task 009 when `preset` was added to `scriptInputSchema` (aspectRatio
  * became optional, inferred from the preset when omitted). `migrateProjectJson` below is the

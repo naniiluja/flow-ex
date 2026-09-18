@@ -116,6 +116,47 @@ describe("NewProjectPage", () => {
     expect(createSpy.mock.calls[0]?.[0]).toEqual({ ...JSON.parse(validJson), preset: "youtube" });
   });
 
+  it("injects voice into the payload when the picker is used", async () => {
+    const project: Project = {
+      id: "55555555-5555-5555-5555-555555555555",
+      title: "Cau chuyen mua he",
+      voice: "sg_male_trungkien_vdts_48k-fhg",
+      aspectRatio: "16:9",
+      preset: "youtube",
+      reviewEnabled: false,
+      references: [],
+      schemaVersion: 2,
+      createdAt: new Date().toISOString(),
+      runStatus: "idle",
+      scenes: [
+        {
+          narration: "Xin chao",
+          imagePrompt: "beach",
+          referenceIds: [],
+          status: "pending",
+          attempts: 0,
+          imageVariants: [],
+        },
+      ],
+    };
+    const createSpy = vi.spyOn(apiClient, "createProject").mockResolvedValue(project);
+    renderPage();
+
+    fireEvent.click(screen.getByRole("combobox", { name: /Giọng đọc/ }));
+    const option = await screen.findByRole("option", { name: /SG - Trung Kiên/ });
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+    fireEvent.change(getTextarea(), { target: { value: validJson } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo dự án" }));
+
+    await waitFor(() => expect(screen.getByText("PROJECT_PAGE")).toBeInTheDocument());
+    expect(createSpy.mock.calls[0]?.[0]).toEqual({
+      ...JSON.parse(validJson),
+      voice: "sg_male_trungkien_vdts_48k-fhg",
+    });
+  });
+
   it("shows the API error message when the server rejects the script", async () => {
     vi.spyOn(apiClient, "createProject").mockRejectedValue(
       new apiClient.ApiError(400, "VALIDATION_ERROR", "scenes must have at least 1 item"),

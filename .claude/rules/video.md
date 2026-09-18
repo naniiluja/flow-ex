@@ -44,7 +44,7 @@ paths: ["video/**"]
 
 - The transition is a HAND-WRITTEN CSS-transform `TransitionPresentation` (`video/src/compositions/cross-zoom-presentation.tsx`: opacity + `perspective(100px) scale(...)`), not `@remotion/transitions`'s own built-in `crossZoom`. The built-in draws through a WebGL2 canvas (`makeHtmlInCanvasPresentation`) and produced fully BLACK frames — not just a broken transition, the whole frame — in this project's headless-Chrome renderer, which has no hardware GPU context. Re-check this if a future Remotion/Chrome upgrade might have fixed canvas support in headless mode before switching back.
 - Drive timing with `springTiming` for a modern feel, not linear easing.
-- Ken Burns pan/zoom: `interpolate` with `extrapolateLeft/Right: 'clamp'`, driving a ZOOM range from `minScale` up to `minScale * 1.15` over the scene's progress (a fixed anchor on the axis constrained by the logo box stays safe at every zoom level, since the window only shrinks as zoom increases — see below). Prevent sub-pixel jitter with `transform: perspective(100px)` + `willChange: transform` on the animated element. Use Remotion's `<Img>` (not a plain `<img>`) so rendering waits for the image to load.
+- Ken Burns pan/zoom: `interpolate` with `extrapolateLeft/Right: 'clamp'`, driving a ZOOM range from `minScale` up to `minScale * 1.06` over the scene's progress (`KEN_BURNS_ZOOM_FACTOR`, `video/src/timing/safe-viewport.ts`, lowered from `1.15` on 2026-09-18 after user feedback that the stronger push-in read as "phèn"/cheap; a fixed anchor on the axis constrained by the logo box stays safe at every zoom level, since the window only shrinks as zoom increases — see below). Prevent sub-pixel jitter with `transform: perspective(100px)` + `willChange: transform` on the animated element. Use Remotion's `<Img>` (not a plain `<img>`) so rendering waits for the image to load.
 
 ## Watermark avoidance (safe viewport, no hard crop)
 
@@ -56,7 +56,24 @@ paths: ["video/**"]
 
 - Word-level timestamps come from whisper.cpp (`@remotion/install-whisper-cpp`), a multilingual model (no `.en` suffix), forced `language: 'vi'`, run on a 16kHz mono WAV.
 - Rendered via `createTikTokStyleCaptions`; each token keeps its leading space exactly as returned.
-- Font: `@remotion/google-fonts`, subset `vietnamese`, so diacritics render correctly. Chosen font: `Be Vietnam Pro` (`video/src/captions/tiktok-captions.tsx`) — a Google Font whose `vietnamese` subset ships with the package and covers every Vietnamese diacritic combination.
+- Font: `@remotion/google-fonts`, subsets `["vietnamese", "latin"]` — **both are required**, not
+  just `vietnamese`: Google Fonts scopes each subset file by its own CSS `unicode-range`, and
+  `vietnamese` alone does not cover plain ASCII letters. Loading only `vietnamese` (every render
+  from task 008 through 2026-09-18) left every plain-ASCII letter (C, n, g, s...) with no
+  `@font-face` covering its codepoint, so the browser silently fell back to its default serif for
+  those letters while only the Vietnamese diacritic letters used the loaded font — a real render
+  showed a font MIX, invisible unless you zoom into an actual rendered frame and check the
+  plain-ASCII letterforms specifically (checking only the diacritic marks, as every earlier
+  verification pass did, hides it completely). This was the true, long-standing cause of the "bể
+  font" complaints, not font choice, not the Whisper mis-transcription, not glyph coverage.
+  Chosen font: `Inter` (`video/src/captions/font.ts`) — picked 2026-09-18 as an SF-Pro-style
+  alternative to `Be Vietnam Pro` (SF Pro itself is Apple's own font, not a Google Font, and
+  cannot be embedded here). **Tried `Montserrat` first (2026-09-18), reverted the same day**: a
+  real render of "cửa" came back as "c??a" — that `@remotion/google-fonts` version's `Montserrat`
+  `vietnamese` subset is missing the horn+hook-above glyph (`ử`), a genuine missing-glyph bug
+  caught only by reading a real rendered frame, not by the font's own metadata claiming the
+  subset. Do not re-attempt a font swap without checking BOTH every Vietnamese diacritic
+  combination AND plain-ASCII letterforms in an actual rendered frame first.
 - `createTikTokStyleCaptions` strips the leading space off the FIRST token in the whole `Caption[]` array (nothing precedes it) and only breaks into a new page once the CURRENT page's own span (first token's `startMs` to the last-added token's `endMs`) exceeds `combineTokensWithinMilliseconds` AND the next token's text starts with a space — a real time GAP between two tokens does NOT by itself force a page break (verified against the library's real output, task 007). `video/src/captions/caption-tokenizer.ts`'s `groupCaptionsForDisplay` is a thin, side-effect-free wrapper; do not re-derive this splitting logic elsewhere.
 
 ## Rendering

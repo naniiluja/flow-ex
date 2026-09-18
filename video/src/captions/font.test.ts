@@ -14,12 +14,12 @@ vi.mock("remotion", () => ({
 let nextHandle = 0;
 let waitUntilDoneImpl: () => Promise<undefined> = () => Promise.resolve(undefined);
 const loadFontMock = vi.fn(() => ({
-  fontFamily: "Be Vietnam Pro",
+  fontFamily: "Inter",
   fonts: {},
   unicodeRanges: {},
   waitUntilDone: waitUntilDoneImpl,
 }));
-vi.mock("@remotion/google-fonts/BeVietnamPro", () => ({
+vi.mock("@remotion/google-fonts/Inter", () => ({
   loadFont: (...args: unknown[]) => loadFontMock(...(args as [])),
 }));
 
@@ -60,7 +60,7 @@ describe("loadCaptionFont", () => {
 
     const result = loadCaptionFont({ weight: "800", subsets: ["vietnamese"] });
 
-    expect(result.fontFamily).toBe("Be Vietnam Pro");
+    expect(result.fontFamily).toBe("Inter");
     expect(delayRenderMock).toHaveBeenCalledTimes(1);
     expect(continueRenderMock).not.toHaveBeenCalled();
 

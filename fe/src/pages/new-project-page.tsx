@@ -1,12 +1,19 @@
 import { useState, type SyntheticEvent } from "react";
 import { useNavigate } from "react-router";
 
-import { PRESETS, type Preset } from "@flow-ex/shared-schemas";
+import { PRESETS, VOICE_OPTIONS, type Preset } from "@flow-ex/shared-schemas";
 
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Label } from "../components/ui/label";
 import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { useCreateProject } from "../hooks/use-create-project";
 import { ApiError } from "../lib/api-client";
@@ -32,10 +39,19 @@ function withSelectedPreset(parsed: unknown, selectedPreset: Preset | null): unk
   return { ...parsed, preset: selectedPreset };
 }
 
+/** Same "only override when touched" rule as `withSelectedPreset` above, applied to `voice`. */
+function withSelectedVoice(parsed: unknown, selectedVoice: string | null): unknown {
+  if (selectedVoice === null || typeof parsed !== "object" || parsed === null) {
+    return parsed;
+  }
+  return { ...parsed, voice: selectedVoice };
+}
+
 export function NewProjectPage() {
   const [rawJson, setRawJson] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<Preset | null>(null);
+  const [selectedVoice, setSelectedVoice] = useState<string | null>(null);
   const createProject = useCreateProject();
   const navigate = useNavigate();
 
@@ -52,7 +68,8 @@ export function NewProjectPage() {
     }
 
     try {
-      const project = await createProject.mutateAsync(withSelectedPreset(parsed, selectedPreset));
+      const withPreset = withSelectedPreset(parsed, selectedPreset);
+      const project = await createProject.mutateAsync(withSelectedVoice(withPreset, selectedVoice));
       void navigate(`/projects/${project.id}`);
     } catch {
       // createProject.error already holds the failure for the UI below.
@@ -100,6 +117,26 @@ export function NewProjectPage() {
                   {String(PRESETS.youtube.suggestedSceneCount.max)} scene)
                 </Label>
               </RadioGroup>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="voice-select">
+                Giọng đọc (tùy chọn, ghi đè lên "voice" trong JSON)
+              </Label>
+              <Select
+                value={selectedVoice ?? undefined}
+                onValueChange={(value) => setSelectedVoice(value)}
+              >
+                <SelectTrigger id="voice-select" className="w-full">
+                  <SelectValue placeholder="Giữ nguyên giọng đã ghi trong JSON" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VOICE_OPTIONS.map((voice) => (
+                    <SelectItem key={voice.code} value={voice.code}>
+                      {voice.name} ({voice.gender === "female" ? "nữ" : "nam"})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="script-json">Kịch bản (JSON)</Label>

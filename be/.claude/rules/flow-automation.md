@@ -48,58 +48,65 @@ Flow can change its UI at any time; run the preflight selector check before trus
   raced each other for whichever `<img>` appeared first, regardless of whose click produced it —
   a real, reproducible cross-scene image swap.
 
-  The fix does not rely on the account's live DOM being surveyed further (the browser
-  investigation this task's brief suggested was not carried out in this pass — see the note at
-  the end of this section for why); instead it uses a property of the fixture-verified click
-  handler that is unlikely to be Flow-UI-specific: submitting a prompt **synchronously appends** a
-  new `flow-image-tile` to the tile list at click time, well before any async decode work starts
-  (observed both in the hand-authored fixture, which mirrors the live "within ~36ms a
-  `flow-image-tile` > `flow-pending-tile` appears" note above, and consistent with any framework's
-  click-handler-driven DOM insertion). `submitImage(page)` therefore:
-  1. reads `flow-image-tile`'s current COUNT (this is the only page-state READ that matters — no
-     UUIDs, no image content),
-  2. clicks generate,
-  3. waits for the tile at that pre-click count (its own 0-based INDEX) to attach,
-  4. returns `{ tileIndex }`.
+  **Bugfix, 2026-09-17 (post-014 real smoke test):** the FIRST version of this section (see git
+  history) assumed a new tile is APPENDED to the end of the tile list at click time, and bound
+  each job to the DOM INDEX captured as "tile count before my click". That assumption was never
+  verified live — the task-014 caveat below (kept for the historical record) says so plainly — and
+  it turned out to be **backwards**: a real Flow project page, driven live via `claude-in-chrome`
+  (typed a prompt into `.ProseMirror` and clicked `button.generate-icon-button` on an already-open
+  project, then read `document.querySelectorAll('flow-image-tile')` before/after), **PREPENDS** the
+  new tile at the FRONT of the list (index 0), pushing every existing tile's index up by one. Under
+  that real ordering, "the tile at index N" is not a stable identity at all: as soon as one MORE
+  job's tile gets prepended in front of it, the SAME index now refers to an OLDER, already-decoded
+  tile instead. This is exactly what turned the very first real 6-scene smoke run
+  (`project 19928cf3-600e-44c0-8864-7860fb776880`) into 6 scenes all downloading the SAME image —
+  every job after the first ended up polling an index that had already drifted onto a finished
+  tile from an earlier job.
 
-  `waitForImageAtTile(page, tileIndex)` then polls ONLY `flow-image-tile:nth(tileIndex) img` for
-  the decode-complete condition above — a completely independent read from any other tile, so
-  multiple scenes' own `waitForImageAtTile` calls can run in TRUE parallel without touching shared
-  state at all.
+  The fix binds identity to the DOM NODE itself, not its position: `submitImage(page)`
+  1. clicks generate,
+  2. immediately takes `page.locator('flow-image-tile').first()` — under prepend semantics this is
+     ALWAYS the tile this exact click just created, since no OTHER job's click can have run yet
+     while this one still holds the submit mutex,
+  3. calls `.elementHandle()` on it to get a handle PINNED to that specific node, immune to any
+     later reordering of the list around it,
+  4. returns `{ tileHandle }`.
 
-  **Concurrency safety requires `submitImage` to run under a mutex** (`./submit-mutex.ts`'s
-  `SubmitMutex`, one instance per `FlowImageProvider`/page): the count-read + click pair is the
-  ONLY moment two scenes could otherwise interleave (scene B reading the tile count between scene
-  A's read and A's click, both then computing overlapping indices). `flow-image-provider.ts` also
-  holds the SAME mutex around `ensureAgentModeOff`/`configureAspectRatioAndBatch`/
-  `typeIntoPromptBox`, since those touch the SAME shared editor/toggle/overlay a concurrently
-  running scene would otherwise stomp on mid-type. The ~25-30s decode wait
-  (`waitForImageAtTile`) deliberately runs OUTSIDE the mutex, so N scenes' decode waits overlap —
-  this is the entire point of task 014 (parallel image generation on one tab).
+  `waitForImageAtTile(page, tileHandle)` then polls ONLY `tileHandle`'s own `img` child for the
+  decode-complete condition below — a completely independent read from any other tile, so multiple
+  scenes' own `waitForImageAtTile` calls can run in TRUE parallel without touching shared state at
+  all, exactly as the index-based design intended, just correctly this time.
+
+  **Concurrency safety still requires `submitImage` to run under a mutex** (`./submit-mutex.ts`'s
+  `SubmitMutex`, one instance per `FlowImageProvider`/page): the click + `.first()` + `elementHandle()`
+  sequence is the ONLY moment two scenes could otherwise interleave (scene B's click landing before
+  scene A has grabbed its own handle would make A's `.first()` resolve to B's tile instead).
+  `flow-image-provider.ts` also holds the SAME mutex around `ensureAgentModeOff`/
+  `configureAspectRatioAndBatch`/`typeIntoPromptBox`, since those touch the SAME shared
+  editor/toggle/overlay a concurrently running scene would otherwise stomp on mid-type. The ~25-30s
+  decode wait (`waitForImageAtTile`) deliberately runs OUTSIDE the mutex, so N scenes' decode waits
+  overlap — this is the entire point of task 014 (parallel image generation on one tab).
+
+  The fixture (`fixtures/flow-page.fixture.html`) was updated to PREPEND (`insertBefore(tile,
+  tiles.firstChild)`) instead of append, matching the real, now-verified behavior.
 
   Regression test: `flow-automation.test.ts`'s "keeps each job's own image even when 3 jobs finish
   decoding in REVERSED order (task 014)" — 3 jobs submitted back-to-back through the SAME mutex on
-  ONE page, whose images are made to finish DECODING in the OPPOSITE order they were submitted in
-  (job 3 first, job 1 last, via the fixture's injectable `window.__flowFixtureDelaysMs`); each job
-  still gets its own image. This test was written and is written to fail against the OLD
-  UUID-diffing implementation in principle (three concurrent snapshot-then-diff calls sharing one
-  page would each resolve against whichever image appeared first) — the failure was reasoned
-  through rather than mechanically re-run against the deleted old code (see the caveat below).
+  ONE (prepend-ordering) page, whose images are made to finish DECODING in the OPPOSITE order they
+  were submitted in (job 3 first, job 1 last, via the fixture's injectable
+  `window.__flowFixtureDelaysMs`); each job still gets its own image. This test now genuinely
+  exercises the prepend-ordering bug the original index-based design could not survive, since the
+  fixture itself reproduces that ordering.
 
-  **Caveat, honestly recorded rather than glossed over:** this task's brief asked for a LIVE
-  `claude-in-chrome` survey against a real, already-open Flow tab (typing 2-3 prompts back-to-back
-  to observe whether a newly-inserted `flow-pending-tile` carries any more stable identity than
-  DOM index) before choosing this design, and for a real Flow smoke run afterward to time the
-  concurrent path against a sequential baseline. Neither was carried out in this pass — this
-  session prioritized a design it could prove correct against the FIXTURE (which already mirrors
-  every live-verified selector in this file) within the time available, over spending a live,
-  credit-bearing Chrome session to additionally confirm a tile-ordering property this design does
-  not actually depend on Flow's account-specific UI details to hold. If a future session runs that
-  live survey and finds tile insertion order is NOT synchronous-with-click on the real page (e.g.
-  Flow batches DOM updates, or reorders tiles), this whole "Tile identity" section is what needs
-  re-deriving — the fallback the task brief itself named (one Playwright `Page`/tab per concurrent
-  job, keeping the original UUID-diffing logic since each `Page` then has its own private DOM) is
-  the documented escape hatch.
+  **Caveat from the original task-014 pass, kept for the historical record:** its brief asked for a
+  LIVE `claude-in-chrome` survey before choosing a design, and that survey was skipped in that pass
+  — this bugfix is that skipped survey, run only after the skipped step's predicted risk (a wrong
+  assumption about tile ordering) materialized as a real, credit-spending bug. The lesson recorded
+  here for future sessions: when a design encodes an assumption about a live UI's behavior that the
+  task brief explicitly asked to verify, verify it before shipping, not after the first real
+  failure — a live check costs a few seconds of Flow credit; an unverified assumption baked into a
+  concurrency primitive costs a whole smoke run's worth of wrong output plus the debugging pass to
+  find it.
 - Aspect ratio + batch: `configureAspectRatioAndBatch` opens the settings overlay, clicks the `mat-button-toggle` matching `project.json`'s `aspectRatio` (icon name `crop_16_9`/`crop_9_16`) and the `x1` batch toggle (this pipeline consumes exactly one image per scene), then closes the overlay by clicking the settings trigger button AGAIN (see the toggle-close note above). Deliberately leaves the MODEL dropdown untouched: `project.json` carries no per-project model field, so whatever the account's current default is (`Nano Banana 2` as of 2026-09-16) stays in effect — a scope decision for this thin slice, not an oversight.
 - Image download + format: `context.request.get(src)` (shares cookies with the page) rather than the CDP download event, which is unreliable over `connectOverCDP`. The file extension is chosen from the response's real `Content-Type` header (`image/png`→`png`, `image/jpeg`→`jpg`, `image/webp`→`webp`, unknown→`png` fallback) rather than assumed, since Flow's actual encoding was not re-verified in task 005 (task-002's fixtures were hand-authored PNGs, not a real Flow download).
 - Width/height: read directly from the live `<img>` element's `naturalWidth`/`naturalHeight` in the browser (via `page.evaluate`) rather than decoding the downloaded bytes — the browser has already decoded the real image, so this avoids depending on a Node-side image-decoding library.
@@ -117,20 +124,53 @@ Flow can change its UI at any time; run the preflight selector check before trus
 - `be/src/providers/select-providers.test.ts`'s `selectImageProvider` tests prove the SELECTION wiring (fake vs real, and the misconfiguration guard) without needing a working Chrome: the "real" case mocks only the CDP `/json/version` HTTP probe via msw (returning a response with no `webSocketDebuggerUrl`, which makes Playwright's own `connectOverCDP` fail fast during parsing) to prove the connection was attempted, not that it fully succeeds. (Moved out of `routes/` in task 006, alongside `createImageProviderFactory`, since the route layer no longer owns provider construction.)
 - `be/tsconfig.json` adds `"DOM"` to `lib` (replacing the base's `["ES2023"]`, since a child tsconfig's `lib` REPLACES rather than merges) because Playwright's own `Locator.evaluate()` types the resolved element as a DOM lib type regardless of the consumer's tsconfig. This is PROGRAM-WIDE, not scoped to `providers/flow/**` — a per-file `/// <reference lib="dom" />` was tried first and found to leak identically (TypeScript's `lib` references apply to the whole program, not just the file that declares them), so the honest tradeoff is documented here instead of hidden behind a misleading per-file comment: a stray `document`/`window`/`fetch` typo anywhere else in `be/` now type-checks instead of erroring.
 
-## Reference images (task 013, verified live 2026-09-17)
+## Reference images (task 015 v2 — upload, verified live 2026-09-18)
 
 - The "+" trigger beside the prompt box (`button.add-menu-trigger`) opens a project-asset picker
-  with a search box (`.editable-text-input`) and a list of `.asset-item` entries; selecting one
-  reveals a `button.detail-add-to-prompt-btn` ("Thêm vào câu lệnh") that inserts it as an inline
+  with a search box (`.editable-text-input`), a list of `.asset-item` entries, and a sidebar
+  upload control (`button.sidebar-upload-btn`, "Tải nội dung nghe nhìn lên"). Selecting an item
+  reveals `button.detail-add-to-prompt-btn` ("Thêm vào câu lệnh") that inserts it as an inline
   reference chip into the SAME `.ProseMirror` prompt box, without itself typing any text.
-- The sidebar's "Nhân vật"/"Cảnh" sections (icons `accessibility_new`/`movie`) are Flow's own
-  character/setting-consistency feature — create once (upload or describe), reuse via the "+"
-  picker above on any later prompt. Full detail + prompt-writing guidance: `../../.claude/rules/image-prompting.md`.
-- `attachReferenceAssets(page, referenceNames, timeoutMs?)` in `flow-automation.ts` drives this
-  picker by exact asset display name; throws `FLOW_REFERENCE_ASSET_NOT_FOUND` (`errorKind: fatal`)
-  if the name isn't found within the picker's search results. Fixture-tested in
-  `flow-automation.test.ts` against a hand-authored picker DOM added to `fixtures/flow-page.fixture.html`.
-- **Not yet wired into the live pipeline run** — see `image-prompting.md`'s "Known gap".
+- **`attachUploadedReferenceImages(page, filePaths, timeoutMs?)`** (`flow-automation.ts`) is the
+  current mechanism: open the picker, click `button.sidebar-upload-btn`, intercept Chromium's
+  native `filechooser` event (the real page has NO `<input type=file>` at rest) and hand it the
+  local file, then click the newest `.asset-item` (`.first()`) and "Thêm vào câu lệnh". Fixture
+  tested in `flow-automation.test.ts` (3-case matrix: single file, same file twice, two files in
+  one call) against the picker DOM in `fixtures/flow-page.fixture.html`, which reproduces both the
+  native-file-chooser trigger and Flow's most-recent-first item ordering.
+- Reference images themselves are generated by the ORDINARY scene flow
+  (`FlowImageProvider.generateReferenceImage` = `ensureAgentModeOff` + `typeIntoPromptBox` +
+  `submitImage`/`waitForImageAtTile` + download to `assets/references/<referenceId>.<ext>`), under
+  the same submit mutex, with no navigation away from the main canvas.
+
+### Retired: the named-asset / "Nhân vật" route design (tasks 013 + first 015 pass)
+
+Kept as a record of what a real smoke run disproved, so nobody rebuilds it:
+
+- `attachReferenceAssets` matched an asset by its display NAME through the picker's search box.
+  **The search box does not actually filter the rendered list** — verified live with `"To Nhuoc Y"`
+  typed in and 17 unrelated assets still returned — so name lookup could never be reliable.
+- `generateReferenceCharacter` drove a SEPARATE route (`<projectUrl>/character`) with a mandatory
+  rename step (`button.pencil-button` + `input.name-input` + a "Xong"/Done button). Three distinct
+  real bugs came out of that single design:
+  1. It derived its project URL from `page.url()` INSIDE the function, so on a `retryWithSchedule`
+     retry (page already at `.../character/<id>`, or a bare `.../404` after a failed attempt)
+     appending `/character` produced a broken path — every retry after the first was doomed.
+  2. The "Xong"/Done control has **two different DOM shapes depending on viewport width**: a text
+     button `.flow-button-secondary` at desktop width, an icon-only checkmark
+     (`.flow-icon-button-secondary.mat-mdc-tooltip-trigger`, `aria-label="Đã chỉnh sửa xong"`) at
+     narrow width. A "fix" derived from a screenshot of the NARROW variant broke the desktop path.
+  3. Even when it reported success, the rename could fail to persist — the asset stayed titled
+     "Nhân vật chưa có tên", invisible to any later by-name lookup, while the pipeline recorded the
+     reference as done (its success criterion was only "portrait downloaded").
+- Lesson recorded for future sessions: **verify selectors against the ACTUAL automation tab.** One
+  of those bugs came from screenshotting a stray 360px-wide tab (an extension side panel that had
+  been navigated to the Flow URL by mistake) and treating its mobile-layout DOM as the truth.
+  `context.pages()[0]` is whatever tab happens to be first — check `window.innerWidth` before
+  trusting a live DOM survey.
+- Flow's own transient failure mode to recognise: a banner reading "Không lưu được một số nội dung
+  – vui lòng làm mới rồi thử lại" means the page must be RELOADED; until then every automated
+  action against it hangs or fails, and `button.agent-mode-chip` may be missing entirely.
 
 ## Preflight
 

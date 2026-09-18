@@ -45,8 +45,17 @@ Không tiến sang bước 3 nếu chưa chốt được ba câu này rõ ràng.
 ## Bước 3 — Draft thô (văn xuôi liền mạch, CHƯA chia scene)
 
 Viết toàn bộ nội dung narration dưới dạng **một đoạn văn xuôi liền mạch** (như viết một bài tường
-thuật ngắn), đúng độ dài lời thoại ước tính cho thời lượng video mong muốn (~2.5-3 từ/giây tiếng
-Việt nói tự nhiên).
+thuật ngắn), đúng độ dài lời thoại ước tính cho thời lượng video mong muốn.
+
+**Tốc độ đọc thật đo được từ Vbee TTS (không phải ước lượng): ~5 từ/giây**, gần gấp đôi ước tính
+cũ (~2.5-3 từ/giây) từng ghi ở đây — đo thật từ một video render xong 2026-09-18: kịch bản
+"Cô Gái Áo Trắng Bên Khung Cửa Cháy" ~1200 từ ra đúng 236.5 giây (26 scene, ~9.1s/scene). Vậy
+tổng số từ cần viết ≈ **5 × số giây video mong muốn**: video 10 phút (600 giây) cần khoảng
+**3000 từ** narration, chia thành khoảng **60-70 scene** (mỗi scene ~9-10 giây audio là mức
+tự nhiên Vbee tạo ra cho một câu/mệnh đề trung bình — không cố ép scene dài hơn hay ngắn hơn tự
+nhiên chỉ để đổi số lượng). Đây là con số đo thật, không phải phỏng đoán — nếu sau này pipeline
+đổi giọng đọc/`tts.speed` khác voice `hn_female_ngochuyen_full_48k-fhg` ở tốc độ mặc định, đo lại
+tỉ lệ từ/giây thật một lần nữa trước khi tin số này.
 
 **Lý do bắt buộc bước này:** chia scene ngay từ đầu khiến mỗi scene bị viết thành một câu rời rạc,
 vô hồn, không có nhịp — đây là dấu hiệu "AI slop" phổ biến nhất. Văn xuôi liền mạch buộc phải có
@@ -80,14 +89,29 @@ Với mỗi scene:
   ánh sáng + góc máy. Ví dụ đúng: "Một người phụ nữ trung niên đang cẩn thận xếp từng ổ bánh mì
   nóng lên kệ gỗ trong quán cà phê nhỏ, ánh đèn vàng ấm hắt qua lớp hơi nước còn bốc lên, máy quay
   đặt ngang tầm mắt, hơi nghiêng để lấy cả khung cửa kính mờ hơi sương phía sau."
+- `referenceIds`: nếu kịch bản có nhân vật/bối cảnh lặp lại nhiều scene, khai báo chúng ở
+  `references[]` cấp project rồi liệt kê id tương ứng ở từng scene. Pipeline sẽ gen ảnh nhân vật
+  đó MỘT LẦN rồi **upload lại đúng file ảnh đó** vào ô câu lệnh của mọi scene có khai báo
+  (`.claude/rules/image-prompting.md`).
+
+  Khi scene có `referenceIds`, mở `imagePrompt` bằng cách nói **theo vị trí ảnh đính kèm, KHÔNG
+  gọi tên**, vì Flow không biết tên của ảnh được upload: "Using the attached character image, keep
+  her face and hairstyle exactly as shown; ..." (hoặc "...the attached character image and the
+  attached setting image..." khi có hai reference). Tuyệt đối không viết "the attached reference
+  image of Cô Lan" — cách nói cũ đó thuộc cơ chế tra theo tên đã bị loại bỏ.
+
+  Thứ tự `referenceIds` phải khớp thứ tự nhắc trong prompt (ảnh được upload theo đúng thứ tự
+  trong mảng), ví dụ `["co-lan", "quan-cafe"]` thì prompt nói "character image" trước,
+  "setting image" sau.
 
 ## Bước 6 — Xuất JSON đúng `scriptInputSchema`
 
 Xem `references/schema.md` để lấy đúng schema hiện hành (copy-check field, KHÔNG bịa thêm field —
 schema dùng `.strict()`, thêm field lạ sẽ bị Zod reject với `VALIDATION_ERROR`).
 
-Trường bắt buộc: `title`, `voice`, `aspectRatio` (`"16:9"` hoặc `"9:16"`), `scenes` (mảng, mỗi
-scene chỉ có `narration` + `imagePrompt`). `tts` và `reviewEnabled` là optional.
+Trường bắt buộc: `title`, `voice`, một trong hai `preset` (`"tiktok"`/`"youtube"`) hoặc
+`aspectRatio` (`"16:9"`/`"9:16"`), và `scenes`. Mỗi scene có `narration` + `imagePrompt`, thêm
+`referenceIds` nếu dùng reference. `tts`, `reviewEnabled`, `references` là optional.
 
 Sau khi xuất JSON, nếu có quyền truy cập server flow-ex đang chạy, có thể `POST` thử lên
 `/api/projects` để xác nhận không bị `400 VALIDATION_ERROR` — đây là cách kiểm chứng nhanh nhất

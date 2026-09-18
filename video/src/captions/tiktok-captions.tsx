@@ -43,9 +43,17 @@ export function TikTokCaptions({
   // longer render a frame before the font is actually ready (task 008's fix — the previous code
   // discarded `waitUntilDone` entirely). Weight now follows the active preset's `captionStyle`
   // (task 009) instead of a hard-coded "800".
+  // Google Fonts ships each subset as its own file, scoped by a CSS `unicode-range` — the
+  // "vietnamese" subset alone only covers Vietnamese-specific precomposed letters, NOT plain
+  // ASCII (C, n, g, s...). Loading ONLY "vietnamese" (as this did until 2026-09-18) left every
+  // plain-ASCII character with no @font-face covering its codepoint, so the browser fell back to
+  // its default serif for those glyphs while the Vietnamese diacritic letters correctly used the
+  // loaded font — a real render only shows this as "some letters look like the wrong font", easy
+  // to miss when eyeballing just the diacritic marks. "latin" must be requested alongside
+  // "vietnamese" so the whole caption renders in ONE font, not a silent per-character mix.
   const { fontFamily } = loadCaptionFont({
     weight: toCaptionFontWeight(captionStyle.fontWeight),
-    subsets: ["vietnamese"],
+    subsets: ["vietnamese", "latin"],
   });
 
   // Regroups when `captions` OR the preset's own combine window changes, not on every frame —

@@ -58,8 +58,11 @@ export const ASSUMED_LOGO_BOX: LogoBox = {
 };
 
 /** How much extra the Ken Burns zoom-in adds on top of the minimum safe zoom, over the scene's
- * full duration — a modest, always-safe amount since a higher zoom only shrinks the window. */
-const KEN_BURNS_ZOOM_FACTOR = 1.15;
+ * full duration — a modest, always-safe amount since a higher zoom only shrinks the window.
+ * Lowered from 1.15 to 1.06 (2026-09-18, user feedback: 1.15 read as "phèn", too aggressive/cheap
+ * a push-in for a whole scene) — most short-form editors (CapCut, Reels-style templates) use a
+ * subtle ~5-8% drift over a clip's full length, not a dramatic zoom. */
+const KEN_BURNS_ZOOM_FACTOR = 1.06;
 
 /**
  * Computes the `object-fit: cover` crop of `imageSize` into `frameSize` (the fraction of the

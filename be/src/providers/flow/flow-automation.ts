@@ -1,5 +1,5 @@
 import type { AspectRatio } from "@flow-ex/shared-schemas";
-import type { Page } from "playwright";
+import type { ElementHandle, Page } from "playwright";
 
 import { AppError } from "../../domain/app-error.ts";
 
@@ -33,10 +33,27 @@ const ASPECT_RATIO_ICON: Record<AspectRatio, string> = {
 // SAME prompt box `typeIntoPromptBox` types into afterward. Bound by class, not `aria-label`, per
 // this file's own convention (../../.claude/rules/flow-automation.md).
 const ADD_REFERENCE_TRIGGER_SELECTOR = "button.add-menu-trigger";
-const ASSET_SEARCH_INPUT_SELECTOR = ".editable-text-input";
 const ASSET_ITEM_SELECTOR = ".asset-item";
 const ADD_TO_PROMPT_BUTTON_SELECTOR = "button.detail-add-to-prompt-btn";
-const REFERENCE_ATTACH_TIMEOUT_MS = 10_000;
+
+// Task 015 v2, superseding the ORIGINAL task-015 design (see git history / flow-automation.md for
+// the retired approach): a real smoke run proved the separate "Nhân vật" (character) creation
+// route unreliable in practice — viewport-dependent selectors for its "Xong"/Done control, and a
+// rename step that could silently fail to persist the name Flow's own "+" picker later searches
+// by (that picker's search box was ALSO verified live to not actually filter its result list at
+// all, undermining name-based lookup on its own). Reference images are now generated the exact
+// same way as a normal scene image (`typeIntoPromptBox` + `submitImage`/`waitForImageAtTile` on
+// the main canvas, no separate route, no rename/save step) and reattached to later scenes by
+// UPLOADING the downloaded file directly into the "+" picker (`attachUploadedReferenceImages`
+// below) instead of searching for a named asset.
+const SIDEBAR_UPLOAD_BUTTON_SELECTOR = "button.sidebar-upload-btn";
+const UPLOAD_TIMEOUT_MS = 30_000; // observed live: upload + Flow's own processing settles quickly
+// The "Thêm vào câu lệnh" button stays disabled while Flow finishes processing the just-uploaded
+// asset (a visible loading spinner in its own preview panel) — under concurrent scenes hammering
+// the SAME Flow project, this can genuinely take longer than the 30s upload budget above (a real
+// 5-scene/2-reference run hit `Timeout 30000ms exceeded` on this exact click, 2026-09-18). Give
+// this specific click its own wider budget rather than reusing `UPLOAD_TIMEOUT_MS`.
+const ADD_TO_PROMPT_TIMEOUT_MS = IMAGE_GENERATION_TIMEOUT_MS;
 
 export interface GeneratedImageRef {
   src: string;
@@ -73,11 +90,41 @@ export async function ensureLoggedIn(
 
 /** Agent mode must be OFF to generate an image directly instead of routing through an agent
  * flow (../../.claude/rules/flow-automation.md). */
-export async function ensureAgentModeOff(page: Page): Promise<void> {
+// Bugfix, 2026-09-17 (real smoke run, task 015): this kept timing out at Playwright's DEFAULT 30s
+// action timeout whenever Flow's own client bootstrap was still rendering the chip (observed right
+// after a full page (re)load, e.g. the manual refresh Flow itself asks for after its "Không lưu
+// được một số nội dung" error banner). The chip does appear, just later than 30s sometimes, so the
+// wait budget is explicit and generous here rather than left at the short default.
+export async function ensureAgentModeOff(
+  page: Page,
+  timeoutMs = IMAGE_GENERATION_TIMEOUT_MS,
+): Promise<void> {
   const chip = page.locator(AGENT_MODE_CHIP_SELECTOR).first();
-  const pressed = await chip.getAttribute("aria-pressed");
+  await chip.waitFor({ state: "attached", timeout: timeoutMs });
+  const pressed = await chip.getAttribute("aria-pressed", { timeout: timeoutMs });
   if (pressed === "true") {
-    await chip.click();
+    await chip.click({ timeout: timeoutMs });
+  }
+}
+
+/** Closes the reference-image picker if a PRIOR attempt left it open. A real 5-scene concurrent
+ * run (2026-09-18) hit `configureAspectRatioAndBatch`'s `settingsTrigger.click()` timing out on
+ * the very next retry after `attachUploadedReferenceImages` failed mid-loop — the picker overlay
+ * from that aborted attempt stayed open and intercepted clicks on `SETTINGS_TRIGGER_SELECTOR`
+ * underneath it. `ADD_REFERENCE_TRIGGER_SELECTOR` toggles the picker open/closed on repeat
+ * clicks (the same toggle pattern `configureAspectRatioAndBatch` already relies on for its own
+ * overlay), so clicking it again closes a leftover picker; a no-op click when nothing is open
+ * would just toggle it OPEN, so this only clicks when `ADD_TO_PROMPT_BUTTON_SELECTOR` (visible
+ * only while the picker is open) is actually on screen. Call this FIRST in every submit attempt,
+ * before `ensureAgentModeOff`/`configureAspectRatioAndBatch`, so every retry starts clean. */
+export async function closeReferencePickerIfOpen(page: Page): Promise<void> {
+  const isPickerOpen = await page
+    .locator(ADD_TO_PROMPT_BUTTON_SELECTOR)
+    .first()
+    .isVisible()
+    .catch(() => false);
+  if (isPickerOpen) {
+    await page.locator(ADD_REFERENCE_TRIGGER_SELECTOR).first().click();
   }
 }
 
@@ -125,40 +172,35 @@ export async function typeIntoPromptBox(page: Page, prompt: string): Promise<voi
   await editor.pressSequentially(prompt);
 }
 
-/** Attaches each of `referenceNames` (a project asset's exact display name, e.g. a Flow "Nhân
- * vật"/"Cảnh" the reference phase already generated once) into the current prompt as an inline
- * reference chip, so the scenes reusing it stay visually consistent with that same
- * character/setting (task 013, ../../.claude/rules/flow-automation.md's reference-image section).
- * Must run BEFORE `typeIntoPromptBox`, since attaching a reference does not itself touch
- * `.ProseMirror`'s own text content — it only inserts the chip; the scene's own narration text is
- * typed afterward. Reference names are matched by EXACT text within the picker's asset list, since
- * the picker's search box filters by substring and this pipeline never has two references sharing
- * a name (`referenceSchema.name` is set once per reference at project creation). */
-export async function attachReferenceAssets(
+/** Uploads each of `filePaths` (an already-downloaded reference image on local disk) into Flow's
+ * "+" picker and attaches it into the current prompt as an inline reference chip, so the scenes
+ * reusing it stay visually consistent with that same character/setting (task 015 v2,
+ * ../../.claude/rules/flow-automation.md's reference-image section). Must run BEFORE
+ * `typeIntoPromptBox`, since attaching a reference does not itself touch `.ProseMirror`'s own text
+ * content — it only inserts the chip; the scene's own narration text is typed afterward.
+ * Verified live: clicking `SIDEBAR_UPLOAD_BUTTON_SELECTOR` fires a native file-chooser, intercepted
+ * here via Playwright's `filechooser` event (the standard way to drive a native OS file dialog
+ * without ever seeing a real `<input type=file>` in the DOM). After upload, the newly-added item
+ * is the FIRST entry in the asset grid (Flow's own "Gần đây"/recent sort) — picking `.first()`
+ * rather than matching by name/text sidesteps the picker's search box, which was ALSO verified
+ * live to not actually filter the rendered list by the typed text at all. */
+export async function attachUploadedReferenceImages(
   page: Page,
-  referenceNames: string[],
-  timeoutMs = REFERENCE_ATTACH_TIMEOUT_MS,
+  filePaths: string[],
+  timeoutMs = UPLOAD_TIMEOUT_MS,
 ): Promise<void> {
-  for (const referenceName of referenceNames) {
+  for (const filePath of filePaths) {
     await page.locator(ADD_REFERENCE_TRIGGER_SELECTOR).first().click();
-    const searchInput = page.locator(ASSET_SEARCH_INPUT_SELECTOR).first();
-    await searchInput.waitFor({ state: "visible", timeout: timeoutMs });
-    await searchInput.fill(referenceName);
-    const item = page.locator(ASSET_ITEM_SELECTOR, { hasText: referenceName }).first();
-    const found = await item
-      .waitFor({ state: "visible", timeout: timeoutMs })
-      .then(() => true)
-      .catch(() => false);
-    if (!found) {
-      throw new AppError({
-        code: "FLOW_REFERENCE_ASSET_NOT_FOUND",
-        errorKind: "fatal",
-        message: `no Flow asset named "${referenceName}" was found in the "+" picker`,
-        context: { referenceName },
-      });
-    }
-    await item.click();
-    await page.locator(ADD_TO_PROMPT_BUTTON_SELECTOR).first().click();
+    const fileChooserPromise = page.waitForEvent("filechooser", { timeout: timeoutMs });
+    await page.locator(SIDEBAR_UPLOAD_BUTTON_SELECTOR).first().click();
+    const chooser = await fileChooserPromise;
+    await chooser.setFiles(filePath);
+    const newItem = page.locator(ASSET_ITEM_SELECTOR).first();
+    await newItem.waitFor({ state: "visible", timeout: timeoutMs });
+    await newItem.click();
+    const addToPromptButton = page.locator(ADD_TO_PROMPT_BUTTON_SELECTOR).first();
+    await addToPromptButton.waitFor({ state: "visible", timeout: ADD_TO_PROMPT_TIMEOUT_MS });
+    await addToPromptButton.click({ timeout: ADD_TO_PROMPT_TIMEOUT_MS });
   }
 }
 
@@ -170,49 +212,57 @@ function extractUuid(src: string): string | undefined {
 const TILE_SELECTOR = "flow-image-tile";
 
 export interface PendingSubmission {
-  /** The DOM index (0-based) of the `flow-image-tile` this submit just created, per
-   * `../../.claude/rules/flow-automation.md`'s "Tile identity" note: a `generate-icon-button`
-   * click synchronously APPENDS a new `flow-image-tile` to the tile list before any async decode
-   * work happens, so the tile at `tileCountBefore` (captured right before the click) is
-   * deterministically the one THIS submit created, regardless of how many OTHER submits are
-   * interleaved on the same page — each one reads its own count immediately before its own click,
-   * while holding the submit mutex, so no two submits can ever read the same index. */
-  tileIndex: number;
+  /** A handle PINNED to the exact `flow-image-tile` DOM node this submit just created, per
+   * `../../.claude/rules/flow-automation.md`'s "Tile identity" note. **Verified live 2026-09-17
+   * (bugfix, after task 014's real-Flow smoke test produced 6 identical images):** a real Flow
+   * page PREPENDS a new tile at the FRONT of the list, not append at the end — the opposite of
+   * task 014's original assumption. Under prepend semantics, a plain DOM INDEX is not a stable
+   * identity: every later submit's own new tile shifts every earlier tile's index up by one, so
+   * "the tile at index N" silently drifts to mean a DIFFERENT (older, already-decoded) tile once
+   * more submits land in front of it — this is exactly what made every scene download the SAME
+   * already-finished image. An `ElementHandle` stays pinned to the same node regardless of how
+   * the list reorders around it, so it has no such drift. */
+  tileHandle: ElementHandle<HTMLElement | SVGElement>;
 }
 
-/** Task 014: replaces the old UUID-diffing approach (kept only in git history). Two concurrent
+/** Task 014 (index-based) + bugfix (handle-based, see `PendingSubmission`'s doc). Two concurrent
  * `generateImage` calls sharing one `Page` used to snapshot "existing UUIDs" and race each other
- * for whichever `<img>` appeared first, silently swapping scenes' images. This function must be
+ * for whichever `<img>` appeared first, silently swapping scenes' images; the index-based fix
+ * that replaced it then broke the same way under Flow's real prepend order. This function must be
  * called while holding the caller's submit mutex (`./submit-mutex.ts`) — it does the ONE part of
- * a submission that touches shared page state (the click + reading the tile list), and hands back
- * a `tileIndex` cheap enough to identify without any further shared-state reads. The 25-30s decode
- * wait (`waitForImageAtTile`) is deliberately NOT part of this function, so it can run OUTSIDE the
+ * a submission that touches shared page state (the click + grabbing the new tile's own handle),
+ * cheap enough to identify without any further shared-state reads. The 25-30s decode wait
+ * (`waitForImageAtTile`) is deliberately NOT part of this function, so it can run OUTSIDE the
  * mutex — multiple scenes' decode waits proceed in parallel once each has its own tile handle. */
 export async function submitImage(
   page: Page,
   timeoutMs = IMAGE_GENERATION_TIMEOUT_MS,
 ): Promise<PendingSubmission> {
-  const tileCountBefore = await page.locator(TILE_SELECTOR).count();
   await page.locator(GENERATE_BUTTON_SELECTOR).click({ timeout: timeoutMs });
-  await page
-    .locator(TILE_SELECTOR)
-    .nth(tileCountBefore)
-    .waitFor({ state: "attached", timeout: timeoutMs });
-  return { tileIndex: tileCountBefore };
+  // While still holding the submit mutex, the newest tile is deterministically `.first()` — no
+  // OTHER submit can have prepended its own tile in front of ours yet, since only one submit runs
+  // at a time under the mutex. Grabbing the handle NOW, before releasing the mutex, is what makes
+  // this safe: by the time another job's submit runs, this handle is already pinned to our node.
+  const newTile = page.locator(TILE_SELECTOR).first();
+  await newTile.waitFor({ state: "attached", timeout: timeoutMs });
+  // `Locator.elementHandle()` is typed to always resolve (never `null`) once `waitFor("attached")`
+  // above has already succeeded — it only rejects if the element vanishes before it can grab one.
+  const tileHandle = await newTile.elementHandle();
+  return { tileHandle };
 }
 
-/** Polls the SPECIFIC tile at `tileIndex` (never any other tile, so it can run concurrently with
- * other scenes' own `waitForImageAtTile` calls against the same page without any shared-state
- * race) until its `<img>` has finished decoding, mirroring the same "both `complete` AND
- * `naturalWidth/Height` positive" check the old implementation used
+/** Polls the SPECIFIC tile node behind `tileHandle` (never any other tile, so it can run
+ * concurrently with other scenes' own `waitForImageAtTile` calls against the same page without
+ * any shared-state race — the handle stays pinned to its node no matter how many more tiles get
+ * prepended in front of it) until its `<img>` has finished decoding, mirroring the same "both
+ * `complete` AND `naturalWidth/Height` positive" check the original implementation used
  * (../../.claude/rules/flow-automation.md's stale-image guard doc). */
 export async function waitForImageAtTile(
   page: Page,
-  tileIndex: number,
+  tileHandle: ElementHandle<HTMLElement | SVGElement>,
   timeoutMs = IMAGE_GENERATION_TIMEOUT_MS,
 ): Promise<GeneratedImageRef> {
   const deadline = Date.now() + timeoutMs;
-  const imgLocator = page.locator(TILE_SELECTOR).nth(tileIndex).locator("img");
 
   let result: { src: string; width: number; height: number } | undefined;
   while (result === undefined) {
@@ -220,23 +270,23 @@ export async function waitForImageAtTile(
       throw new AppError({
         code: "FLOW_IMAGE_GENERATION_TIMEOUT",
         errorKind: "transient",
-        message: `no generated image appeared at tile ${String(tileIndex)} within ${String(timeoutMs)}ms`,
+        message: `no generated image appeared at the submitted tile within ${String(timeoutMs)}ms`,
       });
     }
-    const count = await imgLocator.count();
-    if (count > 0) {
-      const candidate = await imgLocator.first().evaluate((img) => {
-        const el = img as HTMLImageElement;
-        return {
-          src: el.src,
-          width: el.naturalWidth,
-          height: el.naturalHeight,
-          decoded: el.complete && el.naturalWidth > 0 && el.naturalHeight > 0,
-        };
-      });
-      if (candidate.decoded) {
-        result = candidate;
+    const candidate = await tileHandle.evaluate((tile) => {
+      const img = tile.querySelector("img");
+      if (img === null) {
+        return undefined;
       }
+      return {
+        src: img.src,
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        decoded: img.complete && img.naturalWidth > 0 && img.naturalHeight > 0,
+      };
+    });
+    if (candidate?.decoded === true) {
+      result = candidate;
     }
     if (result === undefined) {
       await page.waitForTimeout(500);
@@ -263,6 +313,6 @@ export async function submitAndWaitForImage(
   page: Page,
   timeoutMs = IMAGE_GENERATION_TIMEOUT_MS,
 ): Promise<GeneratedImageRef> {
-  const { tileIndex } = await submitImage(page, timeoutMs);
-  return waitForImageAtTile(page, tileIndex, timeoutMs);
+  const { tileHandle } = await submitImage(page, timeoutMs);
+  return waitForImageAtTile(page, tileHandle, timeoutMs);
 }

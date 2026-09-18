@@ -4,7 +4,12 @@ import path from "node:path";
 import PQueue from "p-queue";
 import type { Logger } from "pino";
 
-import { resolveAspectRatio, type Project, type ProjectScene } from "@flow-ex/shared-schemas";
+import {
+  resolveAspectRatio,
+  type Project,
+  type ProjectReference,
+  type ProjectScene,
+} from "@flow-ex/shared-schemas";
 
 import { AppError } from "../domain/app-error.ts";
 import type {
@@ -23,6 +28,7 @@ import { advanceScene, type SceneEvent } from "./scene-state-machine.ts";
 
 const DEFAULT_SCHEDULE_MS = [30_000, 120_000, 300_000] as const;
 const DEFAULT_IMAGE_CONCURRENCY = 3;
+const DEFAULT_AUDIO_CONCURRENCY = 3;
 // Task 014: after this many CONSECUTIVE image-step failures (across any scenes, reset on any
 // success), the queue's concurrency is lowered to 1 for the rest of the run — a Flow page that's
 // failing repeatedly under concurrent load (rate limiting, a UI state the concurrent submits
@@ -60,6 +66,49 @@ function requireScene(project: Project, sceneIndex: number): ProjectScene {
   return scene;
 }
 
+/** Same invariant-check pattern as `requireScene`, for `project.references[]` (task 015's phase
+ * 0) — an index out of range always means a caller bug in THIS file's own loop. */
+function requireReference(project: Project, referenceIndex: number): ProjectReference {
+  const reference = project.references[referenceIndex];
+  if (reference === undefined) {
+    throw new Error(`pipeline-engine: reference index ${String(referenceIndex)} out of range`);
+  }
+  return reference;
+}
+
+/** Resolves a scene's `referenceIds` to ABSOLUTE paths of the reference images phase 0 already
+ * generated and downloaded (task 015 v2) — these are what `attachUploadedReferenceImages` uploads
+ * straight back into Flow's "+" picker, replacing the retired by-NAME asset lookup. `undefined`
+ * when the scene has none, matching `ImageGenerationContext.referenceImageFiles`'s own
+ * "empty/undefined means no reference" contract. A reference still missing its `imageFile` is
+ * skipped rather than failing the scene: phase 0 runs first and persists every one, so the only
+ * way to reach that state is a deliberate edit, and dropping the attachment degrades consistency
+ * instead of blocking the whole run. */
+function resolveReferenceImageFiles(
+  project: Project,
+  scene: ProjectScene,
+  projectsRoot: string,
+): string[] | undefined {
+  if (scene.referenceIds.length === 0) {
+    return undefined;
+  }
+  const files = scene.referenceIds.map((referenceId) => {
+    const reference = project.references.find((candidate) => candidate.id === referenceId);
+    if (reference === undefined) {
+      // Unreachable in practice: `referenceIdsAreDeclared` (shared-schemas) already rejects a
+      // project where a scene's referenceIds points at an undeclared reference at parse time.
+      throw new Error(
+        `pipeline-engine: referenceId "${referenceId}" has no matching project.references[] entry`,
+      );
+    }
+    return reference.imageFile;
+  });
+  const resolved = files
+    .filter((file): file is string => file !== undefined)
+    .map((file) => path.join(projectsRoot, project.id, "assets", file));
+  return resolved.length === 0 ? undefined : resolved;
+}
+
 export interface PipelineEngineOptions {
   store: ProjectStore;
   imageProvider: ImageProvider;
@@ -75,6 +124,10 @@ export interface PipelineEngineOptions {
    * Default 3 (`env.ts`'s `FLOW_IMAGE_CONCURRENCY`); the engine itself lowers this toward 1 at
    * runtime on repeated consecutive failures (see `CONSECUTIVE_FAILURES_BEFORE_LOWERING_CONCURRENCY`). */
   imageConcurrency?: number;
+  /** Task 014-audio: how many scenes' audio (Vbee) steps may run concurrently. Default 3
+   * (`env.ts`'s `VBEE_AUDIO_CONCURRENCY`) — unlike images there is no shared-page mutex to
+   * serialize around, so this is a flat ceiling, not lowered at runtime on failure. */
+  audioConcurrency?: number;
 }
 
 export interface PipelineEngine {
@@ -255,6 +308,13 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
             // `reviewEnabled` above). `resolveAspectRatio` (task 009) still applies the
             // explicit-aspectRatio-wins-over-preset rule on top of that snapshot.
             aspectRatio: resolveAspectRatio(beforeTransition),
+            // Task 015 v2: resolved from THIS call's own fresh `beforeTransition` snapshot, same
+            // concurrency-safety rule as `aspectRatio` above.
+            referenceImageFiles: resolveReferenceImageFiles(
+              beforeTransition,
+              scene,
+              options.store.projectsRoot,
+            ),
             logger: options.baseLogger.child({ projectId, runId, stage: "image" }),
           }),
         (image, current) => ({
@@ -280,11 +340,14 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
         sceneIndex,
         "audio",
         { success: "audio_succeeded", failure: "audio_failed" },
-        () => {
-          // Read fresh each retry attempt: a stateful provider (VbeeTtsProvider) may have
-          // persisted a NEW requestId via onRequestSubmitted on a prior attempt within this same
-          // executeStep call, and a later attempt must resume from THAT one, not re-submit.
-          const current = requireScene(project, sceneIndex);
+        async () => {
+          // Read FRESH FROM THE STORE (not the shared outer `project`) each retry attempt: with
+          // audio now running concurrently across scenes (task 014-audio), the outer `project`
+          // can be a snapshot from BEFORE this scene's own `onRequestSubmitted` write below
+          // committed, momentarily reverting a resumed retry back to "no existing request" and
+          // resubmitting instead of polling — reading the store directly is what
+          // `backend-conventions.md`'s "no step can assume scenes run one at a time" requires.
+          const current = requireScene(await options.store.read(projectId), sceneIndex);
           const existingRequest =
             current.audioRequestId !== undefined && current.audioRequestSubmittedAt !== undefined
               ? { requestId: current.audioRequestId, submittedAt: current.audioRequestSubmittedAt }
@@ -353,6 +416,69 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
 
     project = await options.store.update(projectId, (p) => ({ ...p, runId, runStatus: "running" }));
     logAndEmit("info", { stage: "pipeline" }, "pipeline.run.start");
+
+    // --- Phase 0: reference (character/setting) image generation (task 015) ------------------
+    // Sequential and BEFORE any scene's own image step, since a scene's `attachReferenceAssets`
+    // call (inside `runImageStep`/`FlowImageProvider.generateImage`) needs every reference it
+    // points at to already exist as a named Flow asset. Idempotent across a resume: a reference
+    // with `imageFile` already set (from a prior run) is skipped.
+    for (const referenceIndex of project.references.map((_, index) => index)) {
+      const reference = requireReference(project, referenceIndex);
+      if (reference.imageFile !== undefined) {
+        continue;
+      }
+      if (options.imageProvider.generateReferenceImage === undefined) {
+        const error = new AppError({
+          code: "IMAGE_PROVIDER_MISSING_REFERENCE_SUPPORT",
+          errorKind: "fatal",
+          message:
+            "this project has references[] but the configured ImageProvider does not implement generateReferenceImage",
+          context: { projectId, referenceId: reference.id },
+        });
+        await failRun(error);
+        throw error;
+      }
+      const imageProvider = options.imageProvider;
+      logAndEmit("info", { stage: "reference" }, "pipeline.reference.start");
+      try {
+        await retryWithSchedule(
+          async () => {
+            // Called through `imageProvider.generateReferenceImage(...)` (not a destructured
+            // reference to the bare method) so `this` stays bound to the provider object.
+            const image = await imageProvider.generateReferenceImage?.(
+              reference.prompt,
+              reference.name,
+              {
+                projectId,
+                referenceId: reference.id,
+                logger: options.baseLogger.child({ projectId, runId, stage: "reference" }),
+              },
+            );
+            if (image === undefined) {
+              throw new Error(
+                "pipeline-engine: generateReferenceImage became undefined mid-retry, unreachable",
+              );
+            }
+            project = await options.store.update(projectId, (p) => {
+              const references = [...p.references];
+              const current = requireReference(p, referenceIndex);
+              references[referenceIndex] = { ...current, imageFile: image.file };
+              return { ...p, references };
+            });
+          },
+          { scheduleMs, jitter, shouldRetry: isRetryableError, signal: options.signal },
+        );
+        logAndEmit("info", { stage: "reference" }, "pipeline.reference.success");
+      } catch (error) {
+        logAndEmit(
+          "error",
+          { stage: "reference", err: toSceneError(error) },
+          "pipeline.reference.error",
+        );
+        await failRun(error);
+        throw error instanceof Error ? error : new Error(toSceneError(error).message);
+      }
+    }
 
     const sceneIndices = project.scenes.map((_, index) => index);
 
@@ -424,21 +550,55 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
         : new Error(toSceneError(firstImageError).message);
     }
 
-    // --- Phase 2: audio + captions, sequentially per scene (Vbee is not a real bottleneck, task
-    // 014's own scope decision) — reads FRESH from the store per scene rather than the shared
-    // outer `project`, which the just-finished concurrent image phase may have reassigned out of
-    // this scene's own order.
+    // --- Phase 2: audio generation, CONCURRENTLY across scenes (task 014-audio) ----------------
+    // Each Vbee call is an INDEPENDENT HTTP request (no shared browser page to serialize around,
+    // unlike Flow's image phase above), so this is a flat concurrency ceiling with no
+    // failure-triggered step-down. One scene's audio failure does not abort the others — matches
+    // the image phase's own "a job lỗi giữa chừng vẫn không chặn job khác" behavior.
+    const audioConcurrency = options.audioConcurrency ?? DEFAULT_AUDIO_CONCURRENCY;
+    const audioQueue = new PQueue({ concurrency: audioConcurrency });
+    let firstAudioError: unknown;
+
+    // Read FRESH from the store (not the shared outer `project`): the just-finished concurrent
+    // image phase's own outer `project` reassignment is a race between scenes, so it can lag
+    // behind some scene's actually-persisted status at this point.
+    const afterImagePhase = await options.store.read(projectId);
+    const audioSceneIndices = sceneIndices.filter((sceneIndex) => {
+      const status = requireScene(afterImagePhase, sceneIndex).status;
+      return status === "generating_audio";
+    });
+
+    await Promise.all(
+      audioSceneIndices.map((sceneIndex) =>
+        audioQueue.add(async () => {
+          if (options.signal?.aborted) {
+            return;
+          }
+          try {
+            await runAudioStep(sceneIndex);
+          } catch (error) {
+            firstAudioError ??= error;
+          }
+        }),
+      ),
+    );
+
+    if (firstAudioError !== undefined) {
+      await failRun(firstAudioError);
+      throw firstAudioError instanceof Error
+        ? firstAudioError
+        : new Error(toSceneError(firstAudioError).message);
+    }
+
+    // --- Phase 3: captions, sequentially per scene (whisper.cpp is a local CPU-bound process;
+    // running many instances at once would contend for the SAME cores rather than genuinely
+    // parallelize, unlike audio's independent HTTP calls above) — reads FRESH from the store per
+    // scene rather than the shared outer `project`, which the concurrent audio phase may have
+    // reassigned out of this scene's own order.
     for (const sceneIndex of sceneIndices) {
       const scene = requireScene(await options.store.read(projectId), sceneIndex);
       if (scene.status === "ready_for_render" || scene.status === "awaiting_review") {
         continue; // already done, or paused for review (task 006: audio waits for the approve route)
-      }
-
-      try {
-        await runAudioStep(sceneIndex);
-      } catch (error) {
-        await failRun(error);
-        throw error;
       }
 
       try {
