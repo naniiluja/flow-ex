@@ -1,8 +1,20 @@
 import { z } from "zod";
 
+export * from "./image-tasks.ts";
+export { NARRATION_DEFAULTS, resolveNarrationOptions } from "./narration.ts";
+
 import { inferPresetFromAspectRatio, presetSchema, type Preset } from "./presets.ts";
 
-export { PRESETS, presetSchema, resolveAspectRatio, resolveTtsSpeed } from "./presets.ts";
+export {
+  countSentenceMarks,
+  estimateNarrationSeconds,
+  SENTENCE_BREAK_SECONDS,
+  SPEECH_WORDS_PER_SECOND,
+  PRESETS,
+  presetSchema,
+  resolveAspectRatio,
+  resolveTtsSpeed,
+} from "./presets.ts";
 export type {
   CaptionStyleConfig,
   DurationRangeSeconds,
@@ -17,7 +29,10 @@ export type { VoiceOption } from "./voices.ts";
  * became optional, inferred from the preset when omitted). `migrateProjectJson` below is the
  * lazy migration that lets a version-1 `project.json` (always had an explicit `aspectRatio`,
  * never had `preset`) keep loading under the new schema. */
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
+
+export const imageSourceSchema = z.enum(["flow", "codex"]);
+export type ImageSource = z.infer<typeof imageSourceSchema>;
 
 const BITRATES = [8, 16, 32, 64, 128] as const;
 const SAMPLE_RATES = [8000, 16000, 22050, 24000, 32000, 44100, 48000] as const;
@@ -65,6 +80,8 @@ export const ttsOptionsSchema = z
     sampleRate: sampleRateSchema.optional(),
     emphasisIntensity: emphasisIntensitySchema.optional(),
     clientPause: clientPauseSchema.optional(),
+    // Local timeline silence between scenes; never sent to Vbee's API.
+    scenePauseMs: z.number().int().min(0).max(5000).optional(),
   })
   .strict();
 
@@ -72,6 +89,23 @@ export type TtsOptions = z.infer<typeof ttsOptionsSchema>;
 
 export const aspectRatioSchema = z.enum(["16:9", "9:16"]);
 export type AspectRatio = z.infer<typeof aspectRatioSchema>;
+
+export const publishingInputSchema = z
+  .object({
+    title: z.string().trim().min(1),
+    description: z.string().trim().min(1),
+    thumbnailSceneIndex: z.number().int().nonnegative().default(0),
+  })
+  .strict();
+
+export const publishingPackageSchema = publishingInputSchema.extend({
+  thumbnailFile: z.string().min(1),
+});
+export const publishingProjectSchema = publishingInputSchema.extend({
+  thumbnailFile: z.string().min(1).optional(),
+});
+
+export type PublishingPackage = z.infer<typeof publishingPackageSchema>;
 
 /** A reusable character/setting reference (task 013), generated ONCE via Flow's native
  * "Nhân vật"/"Cảnh" asset picker (be/.claude/rules/flow-automation.md's reference-image section)
@@ -108,6 +142,7 @@ export const scriptInputObjectSchema = z
   .object({
     title: z.string().trim().min(1),
     voice: z.string().trim().min(1),
+    imageSource: imageSourceSchema.optional(),
     // Task 009: `preset` drives the frame/caption/TTS-speed defaults (packages/shared-schemas/
     // src/presets.ts). `aspectRatio` is now optional and, when omitted, is INFERRED from
     // `preset`; when the caller writes it explicitly it WINS over the preset's own default (see
@@ -117,6 +152,7 @@ export const scriptInputObjectSchema = z
     preset: presetSchema.optional(),
     aspectRatio: aspectRatioSchema.optional(),
     tts: ttsOptionsSchema.optional(),
+    publishing: publishingInputSchema.optional(),
     // Task 006's "Dừng để duyệt" switch: an opt-in per run, decided at project creation and
     // persisted so a resumed run reads the SAME choice rather than re-asking (../../be/.claude
     // /rules/flow-automation.md's review-gate design). Defaults off so tasks 002-005's existing
@@ -224,6 +260,9 @@ export const imageVariantSchema = z
     file: z.string(),
     width: z.number().int().positive(),
     height: z.number().int().positive(),
+    source: imageSourceSchema.optional(),
+    checksum: z.string().optional(),
+    revision: z.string().optional(),
   })
   .strict();
 
@@ -286,6 +325,7 @@ export type ProjectScene = z.infer<typeof projectSceneSchema>;
  * 0, before any scene's own image step) generates it once. */
 export const projectReferenceSchema = referenceSchema.extend({
   imageFile: z.string().optional(),
+  image: imageVariantSchema.optional(),
 });
 
 export type ProjectReference = z.infer<typeof projectReferenceSchema>;
@@ -307,6 +347,7 @@ export const projectObjectSchema = scriptInputObjectSchema.extend({
   runId: z.uuid().optional(),
   runStatus: runStatusSchema,
   outputFile: z.string().optional(),
+  publishing: publishingProjectSchema.optional(),
 });
 
 export const projectSchema = withPresetInvariant(projectObjectSchema).refine(
@@ -327,14 +368,17 @@ export function migrateProjectJson(raw: unknown): unknown {
   if (typeof raw !== "object" || raw === null) {
     return raw;
   }
-  const obj = raw as Record<string, unknown>;
-  if (obj.schemaVersion === 1 && obj.preset === undefined) {
+  let obj = raw as Record<string, unknown>;
+  if (obj.schemaVersion === 1) {
     const aspectRatio = obj.aspectRatio as AspectRatio | undefined;
-    return {
+    obj = {
       ...obj,
-      preset: inferPresetFromAspectRatio(aspectRatio),
-      schemaVersion: CURRENT_SCHEMA_VERSION,
+      preset: obj.preset ?? inferPresetFromAspectRatio(aspectRatio),
+      schemaVersion: 2,
     };
+  }
+  if (obj.schemaVersion === 2) {
+    obj = { ...obj, imageSource: obj.imageSource ?? "flow", schemaVersion: 3 };
   }
   return obj;
 }
@@ -389,7 +433,22 @@ export const logPipelineEventSchema = z
 
 export type LogPipelineEvent = z.infer<typeof logPipelineEventSchema>;
 
+export const assetPipelineEventSchema = z
+  .object({
+    type: z.literal("asset"),
+    projectId: z.uuid(),
+  })
+  .strict();
+
+export const imageReadinessSchema = z.object({
+  ready: z.boolean(),
+  missingScenes: z.array(z.number().int().nonnegative()),
+  missingReferences: z.array(z.string()),
+});
+export type ImageReadiness = z.infer<typeof imageReadinessSchema>;
+
 export const pipelineEventSchema = z.discriminatedUnion("type", [
+  assetPipelineEventSchema,
   scenePipelineEventSchema,
   logPipelineEventSchema,
 ]);

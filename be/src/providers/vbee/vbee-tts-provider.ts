@@ -14,6 +14,7 @@ import type {
 import { classifyVbeeHttpError, isRequestNotFound } from "./classify-vbee-error.ts";
 import { measureAudioDurationMs } from "./measure-audio-duration.ts";
 import { vbeePollingResponseSchema, vbeeSubmitResponseSchema } from "./vbee-schema.ts";
+import { prepareNarration, vbeeNarrationOptions } from "./narration-request.ts";
 
 const VBEE_BASE_URL = "https://api.vbee.vn/v1/tts";
 const POLL_INTERVAL_FIRST_MS = 2000;
@@ -134,11 +135,11 @@ export function createVbeeTtsProvider(options: VbeeTtsProviderOptions): TtsProvi
 
   async function submitRequest(text: string, voiceCode: string): Promise<string> {
     const body = {
-      text,
+      text: prepareNarration(text),
       mode: "async" as const,
       webhookUrl: options.webhookUrl,
       voiceCode,
-      ...options.ttsOptions,
+      ...vbeeNarrationOptions(options.ttsOptions),
     };
     const response = await fetchOrTransientError(VBEE_BASE_URL, {
       method: "POST",

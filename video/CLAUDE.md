@@ -5,7 +5,7 @@
 
 ## What this package is
 
-The Remotion composition shared by the Player (preview, `fe/`) and the SSR renderer (`be/src/render/`):
+The Remotion composition used by the SSR renderer (`be/src/render/`):
 timing math (`src/timing/`, pure, no IO), the `TransitionSeries` composition with Ken Burns +
 cross-zoom transitions (`src/compositions/`), and the `registerRoot` entry point the bundler needs
 (`src/entry.ts`). Nothing in this package reads a file, makes a network call, or knows about a

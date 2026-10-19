@@ -22,3 +22,6 @@ chrome-profile/
 .DS_Store
 .vscode/
 *.log
+
+# Output of the claude-animation-base skill
+.claude/skills/claude-animation-base/out/

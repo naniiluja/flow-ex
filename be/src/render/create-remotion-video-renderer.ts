@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { captionsFileSchema, resolveAspectRatio, type Project } from "@flow-ex/shared-schemas";
+import { captionsFileSchema, resolveAspectRatio, NARRATION_DEFAULTS, type Project } from "@flow-ex/shared-schemas";
 
 import { AppError } from "../domain/app-error.ts";
 import type { VideoRenderer } from "../domain/providers.ts";
@@ -69,8 +69,10 @@ export function createRemotionVideoRenderer(options: RemotionVideoRendererOption
             imageUrl: options.buildAssetUrl(project.id, scene.imageFile),
             imageWidth: scene.imageWidth ?? DEFAULT_IMAGE_WIDTH,
             imageHeight: scene.imageHeight ?? DEFAULT_IMAGE_HEIGHT,
+            imageSource: scene.imageVariants.find((variant) => variant.file === scene.imageFile)?.source ?? project.imageSource ?? "flow",
             audioUrl: options.buildAssetUrl(project.id, scene.audioFile),
             durationMs: scene.audioDurationMs ?? 0,
+            pauseAfterMs: project.tts?.scenePauseMs ?? NARRATION_DEFAULTS.scenePauseMs,
             captions,
           };
         }),

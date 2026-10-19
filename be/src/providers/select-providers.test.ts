@@ -18,14 +18,14 @@ import {
  *
  * | preset      | ttsOptions.speed | Expected speed |
  * | ----------- | ---------------- | -------------- |
- * | "tiktok"    | undefined        | 1.15 (preset default) |
- * | "youtube"   | undefined        | 1.0 (preset default)  |
+ * | "tiktok"    | undefined        | 0.95 (preset default) |
+ * | "youtube"   | undefined        | 0.95 (preset default)  |
  * | "tiktok"    | 0.8 (explicit)   | 0.8 (explicit wins)   |
  */
 describe("resolveTtsOptionsForProject", () => {
   it("falls back to the preset's own speed when the project sets none", () => {
-    expect(resolveTtsOptionsForProject("tiktok", undefined).speed).toBe(1.15);
-    expect(resolveTtsOptionsForProject("youtube", undefined).speed).toBe(1.0);
+    expect(resolveTtsOptionsForProject("tiktok", undefined).speed).toBe(0.95);
+    expect(resolveTtsOptionsForProject("youtube", undefined).speed).toBe(0.95);
   });
 
   it("an explicit tts.speed WINS over the preset default", () => {
@@ -35,7 +35,7 @@ describe("resolveTtsOptionsForProject", () => {
   it("keeps every other ttsOptions field untouched", () => {
     const result = resolveTtsOptionsForProject("youtube", { bitrate: 64 });
     expect(result.bitrate).toBe(64);
-    expect(result.speed).toBe(1.0);
+    expect(result.speed).toBe(0.95);
   });
 });
 

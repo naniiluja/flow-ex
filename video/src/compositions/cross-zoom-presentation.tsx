@@ -1,6 +1,8 @@
 import type { TransitionPresentation } from "@remotion/transitions";
 import React from "react";
 
+import { transitionBlurFilter } from "./transition-blur.ts";
+
 /**
  * A hand-written cross-zoom transition: the outgoing scene zooms in slightly and fades out while
  * the incoming scene zooms in from slightly larger and fades in. Driven by `springTiming` at the
@@ -35,8 +37,9 @@ export const crossZoomPresentation = (): TransitionPresentation<Record<string, n
             width: "100%",
             height: "100%",
             opacity,
+            filter: transitionBlurFilter(presentationProgress),
             transform: `perspective(100px) scale(${String(scale)})`,
-            willChange: "transform, opacity",
+            willChange: "transform, opacity, filter",
           }}
         >
           {children}

@@ -8,7 +8,7 @@ export type { LogPipelineEvent, PipelineEvent, ScenePipelineEvent } from "@flow-
  * changes and log lines live, without the route and the pipeline engine knowing about each other
  * directly (../../.claude/rules/architecture.md: routes -> services, never the reverse). The
  * event SHAPE itself is `@flow-ex/shared-schemas`'s `pipelineEventSchema` — the single definition
- * both this module and `fe/src/hooks/use-project-events.ts` validate against. */
+ * this module and every SSE consumer validate against. */
 export interface PipelineEventBus {
   emit(projectId: string, event: PipelineEvent): void;
   subscribe(projectId: string, handler: (event: PipelineEvent) => void): () => void;

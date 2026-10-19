@@ -90,8 +90,14 @@ describe("createWhisperTranscriptionProvider", () => {
     expect(result0.file).toBe("captions/000.json");
     expect(result1.file).toBe("captions/001.json");
     const raw = await fs.readFile(path.join(assetsDir, result0.file), "utf8");
+    // The mock returns ONE token for a two-word narration. Before task 023 that count mismatch
+    // made `alignCaptionsToNarration` bail and write whisper's single token through unchanged;
+    // it now divides that token's span between both script words, so the second word reaches the
+    // screen instead of being dropped. "Xin" keeps the token's own timestampMs/confidence since
+    // it is the anchored word; "chao" is derived, so its confidence is null.
     expect(JSON.parse(raw)).toEqual([
-      { text: "Xin", startMs: 0, endMs: 300, timestampMs: 150, confidence: 1 },
+      { text: "Xin", startMs: 0, endMs: 129, timestampMs: 150, confidence: 1 },
+      { text: " chao", startMs: 129, endMs: 300, timestampMs: 300, confidence: null },
     ]);
     expect(installWhisperCpp).toHaveBeenCalledTimes(1);
     expect(downloadWhisperModel).toHaveBeenCalledTimes(1);

@@ -392,7 +392,8 @@ describe("migrateProjectJson", () => {
   it("infers preset from a v1 project's own aspectRatio and bumps schemaVersion", () => {
     const migrated = migrateProjectJson(oldProject) as Record<string, unknown>;
     expect(migrated.preset).toBe("tiktok");
-    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.imageSource).toBe("flow");
   });
 
   it("a migrated v1 project.json validates against the CURRENT projectSchema", () => {
@@ -403,8 +404,22 @@ describe("migrateProjectJson", () => {
   });
 
   it("leaves an already-current project untouched", () => {
-    const current = { ...oldProject, schemaVersion: 2, preset: "youtube" };
+    const current = { ...oldProject, schemaVersion: 3, preset: "youtube", imageSource: "codex" };
     expect(migrateProjectJson(current)).toEqual(current);
+  });
+
+  it("migrates v2 while preserving its preset and media", () => {
+    const previous = {
+      ...oldProject,
+      schemaVersion: 2,
+      preset: "youtube",
+      outputFile: "output.mp4",
+    };
+    expect(migrateProjectJson(previous)).toEqual({
+      ...previous,
+      schemaVersion: 3,
+      imageSource: "flow",
+    });
   });
 });
 

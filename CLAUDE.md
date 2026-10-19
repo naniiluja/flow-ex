@@ -12,13 +12,19 @@ profile via Playwright to generate images on Google Flow, generates narration au
 API, transcribes it word-by-word with Whisper for TikTok-style captions, and renders everything with
 Remotion into a video where images stay in sync with the voice and transitions feel modern.
 
+## Direction (2026-10-18): no UI, no MCP; skills drive the REST API
+
+The React frontend (`fe/`) was removed; the project is driven by skills (`.claude/skills/`) calling the REST API in `be/`. The MCP server was removed on 2026-10-18.
+The primary output is the clip video of the `collage-broll` skill: Flow stills approved in review, one Flow video clip per
+scene, assembled with ffmpeg together with the Vbee narration and word captions. Long stories narrate in ONE Vbee call with pitch emphasis (`narrate-expressive.mjs`) and use clips only for key scenes. `output.mp4` from the Remotion pipeline
+is the still-image (Ken Burns) fallback. Clips are deliberately NOT part of the Remotion composition.
+
 ## Repo layout (monorepo)
 
 - The root folder holds `CLAUDE.md`, `.claude/`, docker files, CI/CD files. **git init at the root**, not in sub-folders.
-- `be/` — Fastify backend: pipeline engine, `ImageProvider`/`TtsProvider` implementations, project store, SSE, static hosting of `fe/`.
-- `fe/` — React + Vite frontend: script input, scene list, review/approve step, Player preview, log tab.
-- `video/` — Remotion composition shared by the Player (preview) and the backend renderer (`bundle()` + `renderMedia()`): timing, safe-viewport (watermark avoidance), captions.
-- `packages/shared-schemas/` — zod schemas for the scene/script/project JSON contract (`@flow-ex/shared-schemas`), imported by both `be/` and `fe/` so the shape is defined once.
+- `be/` — Fastify backend: pipeline engine, `ImageProvider`/`TtsProvider` implementations, project store, SSE, and the REST API (`/api/*`) that skills drive.
+- `video/` — Remotion composition used by the backend renderer (`bundle()` + `renderMedia()`): timing, safe-viewport (watermark avoidance), captions.
+- `packages/shared-schemas/` — zod schemas for the scene/script/project JSON contract (`@flow-ex/shared-schemas`), imported by `be/` and `video/` so the shape is defined once.
 
 ## Rules (imported — detail lives in .claude/rules/)
 
@@ -33,6 +39,9 @@ Remotion into a video where images stay in sync with the voice and transitions f
 @.claude/rules/tooling.md
 @.claude/rules/git-workflow.md
 @.claude/rules/video.md
+@.claude/rules/script-writing.md
+@.claude/rules/script-review.md
+@.claude/rules/voice-tuning.md
 
 ## Current plan
 

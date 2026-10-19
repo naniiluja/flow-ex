@@ -3,9 +3,9 @@
  * exact same composition. `durationMs` is the TRUE duration of the matching fixture audio file
  * under `be/src/render/fixtures/` (measured when the fixture was generated) — this is a stand-in
  * for the per-scene `durationMs` that task 004's real `VbeeTtsProvider` will measure and store in
- * `project.json` (video.md). Both `fe/` and `be/` build the full asset URL by prefixing the
- * `filename` with their own `/api/samples/` base, so this list is the single source of truth for
- * which 3 fixtures exist and how long each one plays.
+ * `project.json` (video.md). `be/` builds the full asset URL by prefixing the `filename` with its
+ * `/api/samples/` base, so this list is the single source of truth for which 3 fixtures exist and
+ * how long each one plays.
  */
 export interface SampleSceneFixture {
   filename: string;

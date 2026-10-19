@@ -7,6 +7,8 @@ import type { ImageProvider } from "../domain/providers.ts";
 import type { ProjectStore } from "../store/project-store.ts";
 import { toSceneError } from "./pipeline-engine.ts";
 import { advanceScene } from "./scene-state-machine.ts";
+import { requireInactive, withProjectOperation } from "./project-operations.ts";
+import { imageError } from "../providers/imported/image-files.ts";
 
 /**
  * Task 006's review-gate business logic, kept in the pipeline layer rather than the route
@@ -49,8 +51,11 @@ export async function approveSceneReview(
   projectId: string,
   sceneIndex: number,
   variantIndex: number | undefined,
+  activeRuns: Set<string> = new Set<string>(),
 ): Promise<Project> {
-  return store.update(projectId, (project) => {
+  return withProjectOperation(store, projectId, async () => {
+    requireInactive(activeRuns, projectId);
+    return store.update(projectId, (project) => {
     const scene = requireAwaitingReview(project, sceneIndex);
     let patch: Partial<ProjectScene> = {};
     if (variantIndex !== undefined) {
@@ -73,6 +78,7 @@ export async function approveSceneReview(
       status: advanceScene(scene.status, "scene_approved"),
     };
     return { ...project, scenes };
+    });
   });
 }
 
@@ -92,6 +98,9 @@ export async function regenerateSceneReview(
   sceneIndex: number,
 ): Promise<Project> {
   const project = await store.read(projectId);
+  if (project.imageSource === "codex") {
+    throw imageError("EXTERNAL_IMAGE_GENERATION_REQUIRED", "Create a new image with Codex ImageGen, then call import_scene_image with the revision from get_image_tasks.");
+  }
   const scene = requireAwaitingReview(project, sceneIndex);
   const logger = baseLogger.child({
     projectId,

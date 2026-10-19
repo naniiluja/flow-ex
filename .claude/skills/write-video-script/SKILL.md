@@ -5,8 +5,10 @@ description: >
   input `POST /api/projects`. Kích hoạt khi người dùng nói kiểu "viết kịch bản video", "viết script
   cho TikTok/Shorts", "làm nội dung video ngắn về chủ đề X", hoặc yêu cầu tạo file JSON script cho
   flow-ex. KHÔNG dùng cho kịch bản dài (>3 phút), bài viết/blog, hay khi người dùng đã có sẵn JSON
-  script hợp lệ và chỉ muốn sửa nhỏ. Ép quy trình 6 bước bắt buộc, không cho nhảy bước, để chống
-  "AI slop" (kịch bản rời rạc, hook yếu, prompt ảnh là danh sách từ khoá vô hồn).
+  script hợp lệ và chỉ muốn sửa nhỏ. Ép bước grill nhu cầu rồi 6 bước viết bắt buộc, không cho
+  nhảy bước, để chống
+  "AI slop" (kịch bản rời rạc, hook yếu, prompt ảnh là danh sách từ khoá vô hồn). Trước khi viết,
+  bắt buộc dùng `grill-me` ở mode `video` để phỏng vấn nhu cầu còn thiếu từng câu một.
 ---
 
 # Write Video Script
@@ -14,9 +16,33 @@ description: >
 Kỹ năng này tạo ra kịch bản video ngắn CHẤT LƯỢNG CAO, đúng format JSON `scriptInputSchema` của
 flow-ex (`packages/shared-schemas/src/index.ts`), để nạp thẳng vào `POST /api/projects`.
 
+**Kỹ thuật viết và chỉnh giọng nằm trong `.claude/rules/` (nạp mọi phiên), không nằm trong skill này:** đọc
+`script-writing.md`, `script-review.md` và `voice-tuning.md` trước khi viết.
+
 **Quy tắc tối cao: không được nhảy bước hay gộp bước.** Mỗi bước có mục đích chống một lỗi cụ thể
-(kịch bản hời hợt, hook yếu, scene rời rạc). Nếu người dùng giục làm nhanh, vẫn đi đủ 6 bước nhưng
-có thể rút gọn output ở mỗi bước.
+(kịch bản hời hợt, hook yếu, scene rời rạc). Nếu người dùng giục làm nhanh, vẫn grill và đi đủ 6
+bước viết nhưng có thể rút gọn output ở mỗi bước.
+
+## Bước 0 — Grill nhu cầu (BẮT BUỘC trước khi nghiên cứu hoặc tạo project)
+
+Gọi skill `grill-me` với mode `video`. Phỏng vấn **từng câu một**, chờ câu trả lời rồi mới chọn câu
+tiếp theo; không gửi một bảng câu hỏi dài. Tự lấy các dữ kiện người dùng đã nói trong hội thoại và
+chỉ hỏi những điểm còn thiếu hoặc mâu thuẫn. Với mỗi câu hỏi, đề xuất một phương án mặc định kèm
+lý do ngắn để người dùng có thể xác nhận nhanh.
+
+Phải chốt đủ các quyết định ảnh hưởng trực tiếp đến đầu ra: chủ đề/mục tiêu, thể loại, nền tảng và
+tỉ lệ khung hình, thời lượng, khán giả, nhân vật/chủ thể bắt buộc, giọng kể và phong cách nội dung,
+phong cách hình ảnh, nguồn hình (tạo mới hay lấy từ web), voice/ngôn ngữ, cùng các điều cấm hoặc
+yêu cầu bắt buộc. Chỉ hỏi thêm CTA, nguồn tham khảo hay mức độ chính xác khi chúng thực sự liên
+quan. Dừng phỏng vấn khi đã đủ dữ kiện để viết; tóm tắt ngắn các lựa chọn và xin người dùng xác
+nhận trước khi sang bước 1.
+
+Brief cũng phải chốt hướng tiêu đề đăng bài, mô tả và scene đại diện cho thumbnail. Nếu người dùng
+không có yêu cầu riêng, tự chọn phương án bám sát hook thay vì hỏi thêm một câu ít giá trị.
+
+Không được nghiên cứu, viết draft, tạo project hoặc render trong lúc đang grill. Nếu người dùng
+đã cung cấp đầy đủ mọi quyết định trong một yêu cầu rõ ràng, vẫn trình bày bản tóm tắt để xác nhận
+thay vì lặp lại các câu hỏi đã có câu trả lời.
 
 ## Bước 1 — Nghiên cứu (BẮT BUỘC dùng WebSearch thật)
 
@@ -44,41 +70,22 @@ Không tiến sang bước 3 nếu chưa chốt được ba câu này rõ ràng.
 
 ## Bước 3 — Draft thô (văn xuôi liền mạch, CHƯA chia scene)
 
-Viết toàn bộ nội dung narration dưới dạng **một đoạn văn xuôi liền mạch** (như viết một bài tường
-thuật ngắn), đúng độ dài lời thoại ước tính cho thời lượng video mong muốn.
+Viết toàn bộ lời đọc thành **một đoạn văn xuôi liền mạch** rồi mới chia cảnh. Kỹ thuật viết nằm trong quy tắc
+luôn được nạp, đọc trước khi viết: `.claude/rules/script-writing.md` (thứ tự bắt buộc, văn nói, văn kể chuyện, khuôn
+câu AI cần tránh) và `.claude/rules/voice-tuning.md` (nhịp nghỉ, một file audio, nhấn nhá). Thời lượng ước tính theo
+công thức trong `script-review.md`.
 
-**Tốc độ đọc thật đo được từ Vbee TTS (không phải ước lượng): ~5 từ/giây**, gần gấp đôi ước tính
-cũ (~2.5-3 từ/giây) từng ghi ở đây — đo thật từ một video render xong 2026-09-18: kịch bản
-"Cô Gái Áo Trắng Bên Khung Cửa Cháy" ~1200 từ ra đúng 236.5 giây (26 scene, ~9.1s/scene). Vậy
-tổng số từ cần viết ≈ **5 × số giây video mong muốn**: video 10 phút (600 giây) cần khoảng
-**3000 từ** narration, chia thành khoảng **60-70 scene** (mỗi scene ~9-10 giây audio là mức
-tự nhiên Vbee tạo ra cho một câu/mệnh đề trung bình — không cố ép scene dài hơn hay ngắn hơn tự
-nhiên chỉ để đổi số lượng). Đây là con số đo thật, không phải phỏng đoán — nếu sau này pipeline
-đổi giọng đọc/`tts.speed` khác voice `hn_female_ngochuyen_full_48k-fhg` ở tốc độ mặc định, đo lại
-tỉ lệ từ/giây thật một lần nữa trước khi tin số này.
+## Bước 4 — Tự phản biện (đánh giá TỪNG mục, kèm câu trích dẫn)
 
-**Lý do bắt buộc bước này:** chia scene ngay từ đầu khiến mỗi scene bị viết thành một câu rời rạc,
-vô hồn, không có nhịp — đây là dấu hiệu "AI slop" phổ biến nhất. Văn xuôi liền mạch buộc phải có
-mạch cảm xúc và logic trước khi bị cắt khúc.
-
-## Bước 4 — Tự phản biện (checklist cụ thể, đánh giá TỪNG mục, không được bỏ qua)
-
-Tự chấm draft ở bước 3 theo đúng 4 mục sau, viết rõ Có/Không + lý do cho từng mục:
-
-1. **Hook có nêu cái gì đang bị đe doạ/tò mò không?** (không phải chỉ giới thiệu chủ đề chung
-   chung).
-2. **Có ít nhất một chi tiết cụ thể (số, tên riêng, thời điểm) mỗi ~15 giây nội dung không?** Đếm
-   theo số block ~15s trong tổng thời lượng.
-3. **Câu nào xoá đi mà nghĩa không đổi thì xoá.** Rà từng câu, liệt kê câu bị xoá (nếu có) và sửa
-   lại draft.
-4. **Kết có vòng lại hook mở đầu không?** (payoff của bước 2 phải thực sự xuất hiện ở đoạn kết).
-
-Nếu bất kỳ mục nào là "Không", phải sửa lại draft trước khi sang bước 5.
+Chấm đúng 6 mục trong `.claude/rules/script-review.md` và liệt kê câu đã sửa. Không bỏ mục nào, không chấm "Có" mà
+không trích câu.
 
 ## Bước 5 — Chia scene + viết `imagePrompt`
 
 Chia đoạn văn xuôi (đã qua phản biện) thành các scene tự nhiên theo nhịp ý — mỗi scene là một đơn
 vị hình ảnh/ý riêng biệt, KHÔNG cắt cơ học theo số câu cố định.
+
+**Độ dài cảnh** (ràng buộc cứng khi gen audio từng cảnh; truyện kể một mạch thì không): xem mục "Giới hạn cảnh" trong `.claude/rules/script-review.md`. Đoạn ý quá dài thì tách thành hai cảnh với hai `imagePrompt`.
 
 Với mỗi scene:
 
@@ -89,8 +96,13 @@ Với mỗi scene:
   ánh sáng + góc máy. Ví dụ đúng: "Một người phụ nữ trung niên đang cẩn thận xếp từng ổ bánh mì
   nóng lên kệ gỗ trong quán cà phê nhỏ, ánh đèn vàng ấm hắt qua lớp hơi nước còn bốc lên, máy quay
   đặt ngang tầm mắt, hơi nghiêng để lấy cả khung cửa kính mờ hơi sương phía sau."
-- `referenceIds`: nếu kịch bản có nhân vật/bối cảnh lặp lại nhiều scene, khai báo chúng ở
-  `references[]` cấp project rồi liệt kê id tương ứng ở từng scene. Pipeline sẽ gen ảnh nhân vật
+- Phong cách ảnh do chính `imagePrompt` quyết định; `POST /api/projects` không tự gắn cụm phong cách nào.
+  Mặc định khi người dùng không chọn: ảnh anime stylized, chuyện hài hước châm biếm, mỗi `imagePrompt` kết
+  bằng ", anime stylized". Phong cách giấy cắt dán dùng skill `collage-broll`.
+- `referenceIds`: nếu kịch bản có nhân vật/bối cảnh lặp lại nhiều scene, khai báo ĐỦ chúng ở
+  `references[]` cấp project rồi liệt kê id tương ứng ở từng scene (ví dụ cần 10 nhân vật thì
+  khai báo đủ 10, thiếu id nào `create_project` dừng ngay với `REFERENCE_NOT_DECLARED` nêu đúng
+  id đó). Pipeline sẽ gen ảnh nhân vật
   đó MỘT LẦN rồi **upload lại đúng file ảnh đó** vào ô câu lệnh của mọi scene có khai báo
   (`.claude/rules/image-prompting.md`).
 
@@ -111,7 +123,12 @@ schema dùng `.strict()`, thêm field lạ sẽ bị Zod reject với `VALIDATIO
 
 Trường bắt buộc: `title`, `voice`, một trong hai `preset` (`"tiktok"`/`"youtube"`) hoặc
 `aspectRatio` (`"16:9"`/`"9:16"`), và `scenes`. Mỗi scene có `narration` + `imagePrompt`, thêm
-`referenceIds` nếu dùng reference. `tts`, `reviewEnabled`, `references` là optional.
+`referenceIds` nếu dùng reference. `tts`, `reviewEnabled`, `references`, `publishing` là optional.
+
+Khi tạo video hoàn chỉnh, luôn thêm `publishing` gồm `title`, `description` và
+`thumbnailSceneIndex`. Đây là copy đăng bài, không phải ghi chú nội bộ: tiêu đề phải cụ thể, mô tả
+phải tự nhiên và không nhồi từ khóa. Chọn scene có chủ thể chính rõ nhất; backend sẽ dùng ảnh scene
+đó để thiết kế thumbnail YouTube 1280×720 và ghi `thumbnailFile` sau render.
 
 Sau khi xuất JSON, nếu có quyền truy cập server flow-ex đang chạy, có thể `POST` thử lên
 `/api/projects` để xác nhận không bị `400 VALIDATION_ERROR` — đây là cách kiểm chứng nhanh nhất

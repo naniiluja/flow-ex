@@ -3,7 +3,7 @@ import path from "node:path";
 import type { WhisperModel } from "@remotion/install-whisper-cpp";
 import type { Logger } from "pino";
 
-import { resolveTtsSpeed, type Preset, type TtsOptions } from "@flow-ex/shared-schemas";
+import { resolveNarrationOptions, type Preset, type TtsOptions } from "@flow-ex/shared-schemas";
 
 import type { ImageProvider, TranscriptionProvider, TtsProvider } from "../domain/providers.ts";
 import { createFakeImageProvider } from "./fake/fake-image-provider.ts";
@@ -62,7 +62,7 @@ export function resolveTtsOptionsForProject(
   preset: Preset,
   ttsOptions: TtsOptions | undefined,
 ): TtsOptions {
-  return { ...ttsOptions, speed: resolveTtsSpeed(preset, ttsOptions?.speed) };
+  return resolveNarrationOptions(preset, ttsOptions);
 }
 
 /** Picks the real `VbeeTtsProvider` when credentials are configured, else `FakeTtsProvider` —

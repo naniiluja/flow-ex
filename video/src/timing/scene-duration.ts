@@ -28,6 +28,7 @@ export function totalTimelineDurationInFrames(
 /** One audio-bearing scene, as far as this pure timing module needs to know about it. */
 export interface TimedScene {
   durationMs: number;
+  pauseAfterMs?: number;
 }
 
 /**
@@ -46,7 +47,7 @@ export function sceneFramesForTimeline(
 ): number[] {
   return scenes.map((scene, index) =>
     sceneDurationInFrames(
-      scene.durationMs / 1000,
+      (scene.durationMs + (index < scenes.length - 1 ? (scene.pauseAfterMs ?? 0) : 0)) / 1000,
       fps,
       index < scenes.length - 1 ? transitionFrames : 0,
     ),

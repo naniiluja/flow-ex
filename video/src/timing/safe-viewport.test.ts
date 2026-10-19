@@ -7,6 +7,7 @@ import {
   type LogoBox,
   type Size,
   type ViewportRect,
+  viewportLayout,
 } from "./safe-viewport.ts";
 
 /** True when a viewport window overlaps a logo box (both normalized to the image). Test-only:
@@ -57,6 +58,48 @@ describe("computeSafeViewport + kenBurnsViewport", () => {
     const end = kenBurnsViewport(safe, 1);
     expect(end.width).toBeLessThan(start.width);
     expect(end.height).toBeLessThan(start.height);
+  });
+
+  // Task 024: every scene used to make the exact same linear push-in, which reads as mechanical
+  // across a whole video. Direction now alternates per scene and the curve eases.
+  it("zooms OUT instead when the scene asks for the other direction", () => {
+    const safe = computeSafeViewport(FRAME_16_9, FRAME_16_9, ASSUMED_LOGO_BOX);
+    const start = kenBurnsViewport(safe, 0, "out");
+    const end = kenBurnsViewport(safe, 1, "out");
+    expect(end.width).toBeGreaterThan(start.width);
+    expect(end.height).toBeGreaterThan(start.height);
+  });
+
+  it.each([0, 0.001, 0.5, 0.999, 1])(
+    "still never overlaps the logo while zooming OUT at progress=%s",
+    (progress) => {
+      const safe = computeSafeViewport(FRAME_16_9, FRAME_16_9, ASSUMED_LOGO_BOX);
+      expect(rectsOverlap(kenBurnsViewport(safe, progress, "out"), ASSUMED_LOGO_BOX)).toBe(false);
+    },
+  );
+
+  it.each(["in", "out"] as const)(
+    "covers the same zoom range in either direction, so neither is more aggressive (%s)",
+    (direction) => {
+      const safe = computeSafeViewport(FRAME_16_9, FRAME_16_9, ASSUMED_LOGO_BOX);
+      const widths = [
+        kenBurnsViewport(safe, 0, direction).width,
+        kenBurnsViewport(safe, 1, direction).width,
+      ];
+      expect(Math.max(...widths) / Math.min(...widths)).toBeCloseTo(1.06, 5);
+    },
+  );
+
+  it("eases rather than moving linearly, so the midpoint is not the plain average", () => {
+    const safe = computeSafeViewport(FRAME_16_9, FRAME_16_9, ASSUMED_LOGO_BOX);
+    const start = kenBurnsViewport(safe, 0).width;
+    const middle = kenBurnsViewport(safe, 0.25).width;
+    const end = kenBurnsViewport(safe, 1).width;
+
+    // With `Easing.inOut`, a quarter of the way through the scene the motion has covered LESS than
+    // a quarter of the range — that slow start is exactly what stops it reading as mechanical.
+    const linearAtQuarter = start + (end - start) * 0.25;
+    expect(middle).toBeGreaterThan(linearAtQuarter);
   });
 
   it.each([0, 0.5, 1])(
@@ -138,5 +181,29 @@ describe("computeSafeViewport + kenBurnsViewport", () => {
     const gapAtStart = atMaxZoom.x - safe.safeRegionMin;
     const gapAtEnd = safe.safeRegionMax - (atMaxZoom.x + atMaxZoom.width);
     expect(gapAtStart).toBeCloseTo(gapAtEnd, 5);
+  });
+});
+
+/**
+ * Contract-level EP/BVA matrix for viewportLayout(viewport): the CSS placement that
+ * makes a visible window of the source fill the frame.
+ *
+ * | viewport (x, y, width, height)  | Expected (width%, height%, left%, top%)  |
+ * | -------------------------------- | ----------------------------------------- |
+ * | 0, 0, 1, 1  (the whole source)    | 100, 100, 0, 0                            |
+ * | 0.25, 0, 0.5, 0.5                 | 200, 200, -50, 0                          |
+ * | 0.1, 0.2, 0.8, 0.4 (axes differ)  | 125, 250, -12.5, -50                      |
+ */
+describe("viewportLayout", () => {
+  it.each([
+    [{ x: 0, y: 0, width: 1, height: 1 }, [100, 100, 0, 0]],
+    [{ x: 0.25, y: 0, width: 0.5, height: 0.5 }, [200, 200, -50, 0]],
+    [{ x: 0.1, y: 0.2, width: 0.8, height: 0.4 }, [125, 250, -12.5, -50]],
+  ])("maps %j to the expected percentages", (viewport, expected) => {
+    const layout = viewportLayout(viewport);
+    expect(layout.widthPercent).toBeCloseTo(expected[0] ?? NaN);
+    expect(layout.heightPercent).toBeCloseTo(expected[1] ?? NaN);
+    expect(layout.leftPercent).toBeCloseTo(expected[2] ?? NaN);
+    expect(layout.topPercent).toBeCloseTo(expected[3] ?? NaN);
   });
 });
