@@ -1,6 +1,6 @@
 import type { Caption } from "@remotion/captions";
 import { Audio } from "@remotion/media";
-import { springTiming, TransitionSeries } from "@remotion/transitions";
+import { TransitionSeries } from "@remotion/transitions";
 import type { CalculateMetadataFunction } from "remotion";
 import { AbsoluteFill, Img, useCurrentFrame, useVideoConfig } from "remotion";
 import React from "react";
@@ -18,8 +18,13 @@ import {
   ASSUMED_LOGO_BOX,
   computeSafeViewport,
   kenBurnsViewport,
+  type KenBurnsDirection,
+  viewportLayout,
 } from "../timing/safe-viewport.ts";
 import { crossZoomPresentation } from "./cross-zoom-presentation.tsx";
+import { softFadePresentation } from "./soft-fade-presentation.tsx";
+import { presentationKindForJoin } from "./transition-plan.ts";
+import { createTransitionTiming, TRANSITION_FRAMES } from "./transition-timing.ts";
 
 /** One scene's render-ready data: an image + audio URL, the source image's real pixel size (for
  * an aspect-correct Ken Burns crop), and the audio's measured duration. `durationMs` is measured
@@ -30,8 +35,10 @@ export interface RenderableScene {
   imageUrl: string;
   imageWidth: number;
   imageHeight: number;
+  imageSource?: "flow" | "codex";
   audioUrl: string;
   durationMs: number;
+  pauseAfterMs?: number;
   captions?: Caption[];
 }
 
@@ -47,18 +54,6 @@ export interface MainCompositionProps extends Record<string, unknown> {
 }
 
 const FPS = 30;
-
-const TRANSITION_TIMING_CONFIG = { damping: 200 };
-
-function createTransitionTiming() {
-  return springTiming({ config: TRANSITION_TIMING_CONFIG });
-}
-
-/** Measured once from Remotion's own spring physics — NOT a guessed constant — because a spring
- * timing's actual settle duration depends on its config and does not equal any round number a
- * human might pick. Using an unmeasured guess here previously desynced the composition's declared
- * duration from what `TransitionSeries` actually renders, leaving several trailing frames blank. */
-const TRANSITION_FRAMES = createTransitionTiming().getDurationInFrames({ fps: FPS });
 
 const DIMENSIONS: Record<AspectRatio, { width: number; height: number }> = {
   "16:9": { width: 1920, height: 1080 },
@@ -96,14 +91,25 @@ export const calculateMainCompositionMetadata: CalculateMetadataFunction<MainCom
   props,
 }) => computeVideoMetadata(props);
 
+/** Alternating the Ken Burns direction per scene is what stops a run of stills reading as one
+ * mechanical push-in repeated N times. Kept here next to the composition rather than inside
+ * `safe-viewport.ts`, which has no notion of a scene's position in the timeline. */
+function kenBurnsDirectionForScene(sceneIndex: number): KenBurnsDirection {
+  return sceneIndex % 2 === 0 ? "in" : "out";
+}
+
 function KenBurnsImage({
   imageUrl,
   imageWidth,
   imageHeight,
+  imageSource,
+  sceneIndex,
 }: {
   imageUrl: string;
   imageWidth: number;
   imageHeight: number;
+  imageSource?: "flow" | "codex";
+  sceneIndex: number;
 }): React.ReactElement {
   const frame = useCurrentFrame();
   const { durationInFrames, width: frameWidth, height: frameHeight } = useVideoConfig();
@@ -112,17 +118,12 @@ function KenBurnsImage({
   const safe = computeSafeViewport(
     { width: imageWidth, height: imageHeight },
     { width: frameWidth, height: frameHeight },
-    ASSUMED_LOGO_BOX,
+    imageSource === "codex" ? null : ASSUMED_LOGO_BOX,
   );
-  const viewport = kenBurnsViewport(safe, progress);
+  const viewport = kenBurnsViewport(safe, progress, kenBurnsDirectionForScene(sceneIndex));
 
-  // Scale the image so its visible `viewport` window (a fraction of the image on EACH axis)
-  // exactly fills the frame on that axis, then shift it so the window's top-left corner lands at
-  // the frame's top-left. Width and height use their OWN axis's fraction — using a single shared
-  // scale for both (as an earlier version of this file did) silently distorts/misplaces the crop
-  // whenever the image aspect ratio doesn't match the frame's.
-  const widthPercent = 100 / viewport.width;
-  const heightPercent = 100 / viewport.height;
+  // Scale the image so its visible window exactly fills the frame, per axis.
+  const layout = viewportLayout(viewport);
 
   return (
     <AbsoluteFill style={{ overflow: "hidden", backgroundColor: "black" }}>
@@ -130,10 +131,10 @@ function KenBurnsImage({
         src={imageUrl}
         style={{
           position: "absolute",
-          width: `${String(widthPercent)}%`,
-          height: `${String(heightPercent)}%`,
-          left: `${String(-viewport.x * widthPercent)}%`,
-          top: `${String(-viewport.y * heightPercent)}%`,
+          width: `${String(layout.widthPercent)}%`,
+          height: `${String(layout.heightPercent)}%`,
+          left: `${String(layout.leftPercent)}%`,
+          top: `${String(layout.topPercent)}%`,
           transform: "perspective(100px)",
           willChange: "transform",
         }}
@@ -165,6 +166,8 @@ export function MainComposition({ scenes, preset }: MainCompositionProps): React
               imageUrl={scene.imageUrl}
               imageWidth={scene.imageWidth}
               imageHeight={scene.imageHeight}
+              imageSource={scene.imageSource}
+              sceneIndex={index}
             />
             <Audio src={scene.audioUrl} />
             {scene.captions !== undefined && scene.captions.length > 0 && (
@@ -174,7 +177,11 @@ export function MainComposition({ scenes, preset }: MainCompositionProps): React
           {index < scenes.length - 1 && (
             <TransitionSeries.Transition
               timing={createTransitionTiming()}
-              presentation={crossZoomPresentation()}
+              presentation={
+                presentationKindForJoin(index) === "cross-zoom"
+                  ? crossZoomPresentation()
+                  : softFadePresentation()
+              }
             />
           )}
         </React.Fragment>

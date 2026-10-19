@@ -12,10 +12,12 @@ import {
   projectObjectSchema,
   projectSummarySchema,
   scriptInputSchema,
+  imageReadinessSchema,
   type LogPipelineEvent,
 } from "@flow-ex/shared-schemas";
 
 import type { ProjectStore } from "../store/project-store.ts";
+import { getImageReadiness } from "../pipeline/image-tasks.ts";
 
 /** Mirrors `pipeline-engine.ts`'s `logAndEmit`'s NDJSON entry shape (level, time, projectId,
  * runId, stage, msg, sceneIndex?, attempt?, plus an `err` field on error lines) — NOT the same
@@ -122,10 +124,14 @@ const projectsRoutes: FastifyPluginCallback<ProjectsRouteOptions> = (fastify, op
     },
   );
 
-  // Backs the Log tab's initial history load (fe/src/pages/project-scenes-page.tsx): the SSE
-  // stream (`GET /api/projects/:id/events`) only ever emits NEW lines from the moment a client
-  // connects, so reloading the page on an already-finished (or already-running) project showed
-  // an empty Log tab even though `logs/run-<runId>.ndjson` has the full history on disk.
+  app.get("/api/projects/:id/image-readiness", {
+    schema: { params: projectIdParamsSchema, response: { 200: imageReadinessSchema } },
+  }, async (request) => getImageReadiness(await store.read(request.params.id), store.projectsRoot));
+
+  // Returns a run's full log history: the SSE stream (`GET /api/projects/:id/events`) only ever
+  // emits NEW lines from the moment a client connects, so a client attaching to an already-finished
+  // (or already-running) project would see nothing even though `logs/run-<runId>.ndjson` has the
+  // full history on disk.
   app.get(
     "/api/projects/:id/logs",
     {

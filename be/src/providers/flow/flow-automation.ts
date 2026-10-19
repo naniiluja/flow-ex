@@ -20,7 +20,7 @@ const SETTINGS_TRIGGER_SELECTOR = "button.settings-trigger-button";
 const GENERATE_BUTTON_SELECTOR = "button.generate-icon-button";
 
 const LOGIN_CHECK_TIMEOUT_MS = 5_000;
-const IMAGE_GENERATION_TIMEOUT_MS = 90_000; // observed ~25-30s live; wide margin for slow runs
+const IMAGE_GENERATION_TIMEOUT_MS = 180_000; // observed ~25-30s live; 90s timed out on slow Flow mornings (2026-09-19: 2 scenes exhausted 4x90s while tiles appeared late)
 
 const ASPECT_RATIO_ICON: Record<AspectRatio, string> = {
   "16:9": "crop_16_9",

@@ -22,6 +22,7 @@ import { isRetryableError } from "../domain/should-retry.ts";
 import { appendNdjsonLine } from "../logging/ndjson-file.ts";
 import { OUTPUT_FILE_NAME } from "../store/project-paths.ts";
 import type { ProjectStore } from "../store/project-store.ts";
+import { createPublishingPackage } from "../publishing/create-publishing-package.ts";
 import type { PipelineEventBus } from "./pipeline-events.ts";
 import { retryWithSchedule } from "./retry-with-schedule.ts";
 import { advanceScene, type SceneEvent } from "./scene-state-machine.ts";
@@ -128,6 +129,7 @@ export interface PipelineEngineOptions {
    * (`env.ts`'s `VBEE_AUDIO_CONCURRENCY`) — unlike images there is no shared-page mutex to
    * serialize around, so this is a flat ceiling, not lowered at runtime on failure. */
   audioConcurrency?: number;
+  publishingPackageGenerator?: typeof createPublishingPackage;
 }
 
 export interface PipelineEngine {
@@ -137,6 +139,7 @@ export interface PipelineEngine {
 export function createPipelineEngine(options: PipelineEngineOptions): PipelineEngine {
   const scheduleMs = options.retryScheduleMs ?? DEFAULT_SCHEDULE_MS;
   const jitter = options.jitter ?? defaultJitter;
+  const publishingPackageGenerator = options.publishingPackageGenerator ?? createPublishingPackage;
 
   async function run(projectId: string): Promise<Project> {
     let project = await options.store.read(projectId);
@@ -321,10 +324,12 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
           imageFile: image.file,
           imageWidth: image.width,
           imageHeight: image.height,
-          imageVariants: [
-            ...current.imageVariants,
-            { file: image.file, width: image.width, height: image.height },
-          ],
+          imageVariants: current.imageVariants.some((variant) => variant.file === image.file)
+            ? current.imageVariants
+            : [
+                ...current.imageVariants,
+                { file: image.file, width: image.width, height: image.height },
+              ],
         }),
       );
     }
@@ -630,10 +635,21 @@ export function createPipelineEngine(options: PipelineEngineOptions): PipelineEn
     }
     logAndEmit("info", { stage: "render" }, "pipeline.render.success");
 
+    logAndEmit("info", { stage: "publishing" }, "pipeline.publishing.start");
+    let publishing;
+    try {
+      publishing = await publishingPackageGenerator(project, options.store.projectsRoot);
+    } catch (error) {
+      await failRun(error);
+      throw error;
+    }
+    logAndEmit("info", { stage: "publishing" }, "pipeline.publishing.success");
+
     project = await options.store.update(projectId, (p) => ({
       ...p,
       runStatus: "completed",
       outputFile: OUTPUT_FILE_NAME,
+      publishing,
     }));
     await logWriteQueue;
     return project;

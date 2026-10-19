@@ -52,7 +52,7 @@ describe("createProjectStore", () => {
     const b = await store.create(validInput);
     // Bumped 1 -> 2 in task 009 (see @flow-ex/shared-schemas's CURRENT_SCHEMA_VERSION doc
     // comment).
-    expect(a.schemaVersion).toBe(2);
+    expect(a.schemaVersion).toBe(3);
     expect(a.id).not.toBe(b.id);
   });
 

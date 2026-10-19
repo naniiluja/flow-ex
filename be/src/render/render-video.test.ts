@@ -13,7 +13,10 @@ import type { Caption } from "@remotion/captions";
 // form fine, so keep the deep path here as the one that stays copy-paste safe.
 import { SAMPLE_SCENE_FIXTURES } from "@flow-ex/video/src/sample-fixtures.ts";
 import type { MainCompositionProps } from "@flow-ex/video";
-import { springTiming } from "@remotion/transitions";
+import {
+  createTransitionTiming,
+  TRANSITION_FRAMES,
+} from "@flow-ex/video/src/compositions/transition-timing.ts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../app.ts";
@@ -184,17 +187,47 @@ describe("renderVideo (integration)", () => {
     // Sample the MIDPOINT of that window by ADDING half the transition length, never subtracting
     // it (subtracting lands back inside scene 1's own steady content, before the join even starts,
     // which made this assertion pass even when the transition itself rendered fully black).
-    const transitionFrames = springTiming({ config: { damping: 200 } }).getDurationInFrames({
-      fps: FPS,
-    });
-    const firstJoinContentFrame = Math.ceil((firstScene.durationMs / 1000) * FPS);
-    const transitionMidFrame = firstJoinContentFrame + Math.round(transitionFrames / 2);
-    const transitionMidSec = Math.max(0, transitionMidFrame / FPS);
+    const timing = createTransitionTiming();
+    const transitionFrames = TRANSITION_FRAMES;
 
-    const pixelInTransition = await samplePixel(outputLocation, transitionMidSec, centerX, centerY);
-    const isNearBlack =
-      pixelInTransition.r < 15 && pixelInTransition.g < 15 && pixelInTransition.b < 15;
-    expect(isNearBlack).toBe(false);
+    // Sample the frame where the two scenes are ACTUALLY most evenly blended, found from the
+    // timing's own `getProgress` rather than assumed to be the middle frame. The
+    // ease-in-out curve is symmetric, so this lands near the arithmetic midpoint, but deriving it
+    // keeps the assertion honest if the easing is ever changed again.
+    const blendOffset = Array.from({ length: transitionFrames }, (_, frame) => frame).reduce(
+      (best, frame) =>
+        Math.abs(timing.getProgress({ frame, fps: FPS }) - 0.5) <
+        Math.abs(timing.getProgress({ frame: best, fps: FPS }) - 0.5)
+          ? frame
+          : best,
+      0,
+    );
+
+    // Sequence k starts at the running sum of every EARLIER scene's own content frames (each
+    // scene's `durationInFrames` carries an extra `transitionFrames` that the join overlaps back
+    // out), so join k's transition window opens exactly there.
+    const joinContentFrame = (joinIndex: number): number =>
+      scenes
+        .slice(0, joinIndex + 1)
+        .reduce((sum, scene) => sum + Math.ceil((scene.durationMs / 1000) * FPS), 0);
+
+    const isNearBlack = (pixel: { r: number; g: number; b: number }): boolean =>
+      pixel.r < 15 && pixel.g < 15 && pixel.b < 15;
+
+    // Task 024 alternates two presentations, so BOTH have to be proven to render. Join 0 uses
+    // `crossZoomPresentation`, join 1 uses `softFadePresentation`; sampling only the first would
+    // leave the second completely unproven, which is exactly how the built-in canvas/WebGL
+    // `crossZoom` shipped fully black frames before.
+    for (const joinIndex of [0, 1]) {
+      const midFrame = joinContentFrame(joinIndex) + blendOffset;
+      const pixel = await samplePixel(
+        outputLocation,
+        Math.max(0, midFrame / FPS),
+        centerX,
+        centerY,
+      );
+      expect(isNearBlack(pixel), `join ${String(joinIndex)} rendered near-black`).toBe(false);
+    }
   }, 120_000);
 
   /** Task 008 regression: `loadFont()`'s `waitUntilDone` promise used to be discarded, so SSR
@@ -244,12 +277,15 @@ describe("renderVideo (integration)", () => {
     const stat = await fs.stat(outputLocation);
     expect(stat.size).toBeGreaterThan(0);
 
-    // Mid-scene (1s into the 2s scene) lands inside token index 4 ("lạnh,", [1000,1250)ms),
+    // Mid-scene (1.15s into the 2s scene) lands inside token index 4 ("lạnh,", [1000,1250)ms),
     // which `groupCaptionsForDisplay`'s own page-break rule (video.md's Captions section: a page
     // breaks only once its span exceeds the 1200ms combine window AND the next token starts with
     // a space) keeps on the SAME page as tokens 0-3 ("Đêm ấy trời rất") — so this one frame shows
     // both the active (highlighted) word and several inactive (white) words together.
-    const midSceneSec = 1;
+    // 150ms past the word's own start, not exactly on it: the active word's highlight colour now
+    // blends in over 3 frames (`caption-motion.ts`'s `HIGHLIGHT_BLEND_FRAMES`), so the very first
+    // instant of a word is still white by design. 1.15s keeps the sample inside [1000,1250)ms.
+    const midSceneSec = 1.15;
 
     // Crop the whole caption region (bottom ~35%-95% of the frame, well inside the `paddingBottom:
     // "10%"` text block) once and scan every pixel, rather than guessing one exact (x,y) — text

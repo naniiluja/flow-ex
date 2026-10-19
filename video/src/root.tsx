@@ -14,9 +14,8 @@ const DEFAULT_PROPS: MainCompositionProps = {
   preset: "youtube",
 };
 
-/** Registered with `bundle()`/`selectComposition()` (be/src/render/render-video.ts) and mounted
- * directly by the Player (fe/src/pages/project-preview-page.tsx) so preview and render share the
- * exact same composition tree (video.md). */
+/** Registered with `bundle()`/`selectComposition()` (be/src/render/render-video.ts), the single
+ * entry every render goes through (video.md). */
 export function RemotionRoot(): React.ReactElement {
   return (
     <Composition

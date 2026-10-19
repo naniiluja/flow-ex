@@ -1,9 +1,10 @@
 import type { Caption } from "@remotion/captions";
 import React, { useMemo } from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, interpolateColors, useCurrentFrame, useVideoConfig } from "remotion";
 
 import type { CaptionStyleConfig } from "@flow-ex/shared-schemas";
 
+import { pageMotion, wordMotion } from "./caption-motion.ts";
 import { groupCaptionsForDisplay } from "./caption-tokenizer.ts";
 import { loadCaptionFont, type CaptionFontWeight } from "./font.ts";
 
@@ -70,6 +71,8 @@ export function TikTokCaptions({
     return null;
   }
 
+  const page = pageMotion(currentMs, activePage, fps);
+
   return (
     <AbsoluteFill
       style={{
@@ -98,17 +101,26 @@ export function TikTokCaptions({
           textShadow: "0 0 6px black, 0 0 3px black, 0 2px 4px black",
           paintOrder: "stroke fill",
           maxWidth: "85%",
+          opacity: page.opacity,
+          transform: `translateY(${String(page.translateY)}px)`,
         }}
       >
         {activePage.tokens.map((token, index) => {
-          const isActive = currentMs >= token.fromMs && currentMs < token.toMs;
+          const motion = wordMotion(currentMs, token, fps);
           return (
             // `token.text` already carries its own leading space for every token past the
             // page's first (createTikTokStyleCaptions's own convention, verified against its
-            // real output) — re-adding one here would double it up.
+            // real output) — re-adding one here would double it up. `whiteSpace: "pre"` keeps
+            // that leading space alive inside an `inline-block`, which a scaled word needs so
+            // its transform does not reflow the line.
             <span
               key={`${String(index)}-${token.text}`}
-              style={{ color: isActive ? HIGHLIGHT_COLOR : "white" }}
+              style={{
+                display: "inline-block",
+                whiteSpace: "pre",
+                transform: `scale(${String(motion.scale)})`,
+                color: interpolateColors(motion.highlight, [0, 1], ["#ffffff", HIGHLIGHT_COLOR]),
+              }}
             >
               {token.text}
             </span>

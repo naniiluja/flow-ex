@@ -42,7 +42,7 @@ describe("POST /api/projects + GET /api/projects/:id", () => {
     const body = projectSchema.parse(response.json());
     // Bumped 1 -> 2 in task 009 when `preset` was added (see @flow-ex/shared-schemas's
     // CURRENT_SCHEMA_VERSION doc comment).
-    expect(body.schemaVersion).toBe(2);
+    expect(body.schemaVersion).toBe(3);
 
     const onDisk = await fs.readFile(path.join(root, body.id, "project.json"), "utf8");
     expect(projectSchema.parse(JSON.parse(onDisk)).id).toBe(body.id);

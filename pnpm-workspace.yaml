@@ -1,6 +1,5 @@
 packages:
   - "be"
-  - "fe"
   - "video"
   - "packages/*"
 
@@ -9,6 +8,7 @@ allowBuilds:
   "@ffprobe-installer/darwin-arm64": true
   esbuild: true
   msw: true
+  sharp: true
 
 catalog:
   typescript: 6.0.3
@@ -24,8 +24,6 @@ catalog:
   "@types/node": 24.13.5
 
 minimumReleaseAgeExclude:
-  - "@tanstack/query-core@5.103.1"
-  - "@tanstack/react-query@5.103.1"
   - "@types/node@24.13.5"
   - fastify@5.12.5
   - prettier@3.9.7

@@ -72,6 +72,7 @@ export function createProjectStore(
     const resolvedInput = scriptInputSchema.parse(input);
     const project: Project = {
       ...resolvedInput,
+      imageSource: resolvedInput.imageSource ?? "flow",
       id,
       schemaVersion: CURRENT_SCHEMA_VERSION,
       createdAt: new Date().toISOString(),
@@ -86,6 +87,9 @@ export function createProjectStore(
 
     await queueFor(id).add(async () => {
       await fs.mkdir(projectDir(id), { recursive: true });
+      if (project.imageSource === "codex") {
+        await fs.mkdir(path.join(projectDir(id), "image-inbox"), { recursive: true });
+      }
       await writeFileAtomic(projectFile(id), JSON.stringify(project, null, 2));
     });
 

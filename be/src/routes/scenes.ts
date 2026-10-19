@@ -18,6 +18,7 @@ export interface ScenesRouteOptions {
   baseLogger: Logger;
   eventBus: PipelineEventBus;
   getImageProvider: (projectId: string) => ImageProvider;
+  activeRuns?: Set<string>;
 }
 
 /**
@@ -44,7 +45,7 @@ const scenesRoutes: FastifyPluginCallback<ScenesRouteOptions> = (fastify, opts, 
     },
     async (request) => {
       const { id, index } = request.params;
-      const project = await approveSceneReview(opts.store, id, index, request.body.variantIndex);
+      const project = await approveSceneReview(opts.store, id, index, request.body.variantIndex, opts.activeRuns);
       // `approve` is the one review-gate mutation that changes a scene's STATUS (regenerate never
       // does), so it is the one that must reach the SSE `scene` event stream per api-design.md's
       // "on every scene status change" — the pipeline engine itself never runs during a pause, so

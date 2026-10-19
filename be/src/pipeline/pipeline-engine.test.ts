@@ -15,7 +15,7 @@ import type {
   VideoRenderer,
 } from "../domain/providers.ts";
 import { createProjectStore, type ProjectStore } from "../store/project-store.ts";
-import { createPipelineEngine } from "./pipeline-engine.ts";
+import { createPipelineEngine, type PipelineEngineOptions } from "./pipeline-engine.ts";
 import type { PipelineEvent, PipelineEventBus } from "./pipeline-events.ts";
 
 const SILENT_LOGGER = pino({ level: "silent" });
@@ -73,6 +73,7 @@ function buildEngine(
     imageConcurrency?: number;
     audioConcurrency?: number;
     signal?: AbortSignal;
+    publishingPackageGenerator?: PipelineEngineOptions["publishingPackageGenerator"];
   } = {},
 ) {
   return createPipelineEngine({
@@ -88,6 +89,17 @@ function buildEngine(
     imageConcurrency: overrides.imageConcurrency,
     audioConcurrency: overrides.audioConcurrency,
     signal: overrides.signal,
+    publishingPackageGenerator:
+      overrides.publishingPackageGenerator ??
+      ((project) =>
+        Promise.resolve({
+          title: project.publishing?.title ?? project.title,
+          description:
+            project.publishing?.description ??
+            project.scenes.map((scene) => scene.narration).join(" "),
+          thumbnailSceneIndex: project.publishing?.thumbnailSceneIndex ?? 0,
+          thumbnailFile: "publishing/thumbnail.jpg",
+        })),
   });
 }
 
@@ -133,6 +145,10 @@ describe("createPipelineEngine", () => {
 
     expect(result.runStatus).toBe("completed");
     expect(result.outputFile).toBe("output.mp4");
+    expect(result.publishing).toMatchObject({
+      title: "Cau chuyen mua he",
+      thumbnailFile: "publishing/thumbnail.jpg",
+    });
     for (const scene of result.scenes) {
       expect(scene.status).toBe("ready_for_render");
       expect(scene.imageFile).toBe("img.png");

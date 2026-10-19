@@ -44,6 +44,10 @@ export interface BuildAppOptions {
    * `renderRoutes` -> `createPipelineEngine`. `server.ts` derives this from
    * `env.FLOW_IMAGE_CONCURRENCY`. */
   imageConcurrency?: number;
+  /** Task 014-audio: ceiling for concurrent audio steps, threaded to `renderRoutes`.
+   * (Fixes a task-014 drift where `server.ts` already passed this but the field was never
+   * declared, so `tsc --noEmit` failed on `src/server.ts`.) */
+  audioConcurrency?: number;
 }
 
 /** Explicit code -> HTTP status map (see ../.claude/rules/error-handling.md). Anything not
@@ -120,6 +124,10 @@ export function buildApp(options: BuildAppOptions) {
     options.store.projectsRoot,
   );
 
+  // One duplicate-run guard shared by the render route and the scene-review route, which both start
+  // or block engine runs in this same process.
+  const activeRuns = new Set<string>();
+
   fastify.register(projectsRoutes, { store: options.store });
   fastify.register(assetsRoutes);
   fastify.register(projectAssetsRoutes, { projectsRoot: options.store.projectsRoot });
@@ -132,12 +140,15 @@ export function buildApp(options: BuildAppOptions) {
     transcriptionMode: options.transcriptionMode,
     whisperOptions: options.whisperOptions,
     imageConcurrency: options.imageConcurrency,
+    audioConcurrency: options.audioConcurrency,
+    activeRuns,
   });
   fastify.register(scenesRoutes, {
     store: options.store,
     baseLogger,
     eventBus,
     getImageProvider,
+    activeRuns,
   });
   fastify.register(eventsRoutes, { eventBus });
 

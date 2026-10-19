@@ -7,6 +7,8 @@ import { setupServer } from "msw/node";
 import type { Logger } from "pino";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resolveNarrationOptions } from "@flow-ex/shared-schemas";
+
 import { AppError } from "../../domain/app-error.ts";
 import type { AudioGenerationContext } from "../../domain/providers.ts";
 import { createVbeeTtsProvider, type VbeeTtsProviderOptions } from "./vbee-tts-provider.ts";
@@ -107,6 +109,43 @@ describe("createVbeeTtsProvider", () => {
     expect(typeof submittedArg?.submittedAt).toBe("string");
     const written = await fs.readFile(path.join(dir, "audio", "000.mp3"));
     expect(written).toEqual(FAKE_MP3);
+  });
+
+  it("puts the resolved clientPause in the real POST body, minus the two excluded fields (task 022)", async () => {
+    let submittedBody: Record<string, unknown> | undefined;
+    server.use(
+      http.post(BASE, async ({ request }) => {
+        submittedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ requestId: "req-pause", status: "PROCESSING" }, { status: 201 });
+      }),
+      http.get(`${BASE}/requests/req-pause`, () =>
+        HttpResponse.json({
+          requestId: "req-pause",
+          status: "COMPLETED",
+          audioLink: "https://vbee.vn/s/req-pause/abc",
+        }),
+      ),
+      http.get("https://vbee.vn/s/req-pause/abc", () => new HttpResponse(FAKE_MP3)),
+    );
+
+    const provider = buildProvider(dir, {
+      pollTimeoutMs: 30_000,
+      // An explicit emphasisIntensity here proves it is dropped even when a script asks for it,
+      // not merely absent because the defaults no longer supply one.
+      ttsOptions: { ...resolveNarrationOptions("tiktok"), emphasisIntensity: 60 },
+    });
+    await provider.synthesize("Hết câu. Nghỉ một nhịp.", makeContext());
+
+    expect(submittedBody).toMatchObject({
+      clientPause: {
+        mediumBreak: 0.2,
+        majorBreak: 0.3,
+        sentenceBreak: 0.4,
+        paragraphBreak: 1.4,
+      },
+    });
+    expect(submittedBody).not.toHaveProperty("scenePauseMs");
+    expect(submittedBody).not.toHaveProperty("emphasisIntensity");
   });
 
   it("follows a real redirect (302) transparently when downloading the audio", async () => {
