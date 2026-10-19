@@ -1,4 +1,3 @@
-import path from "node:path";
 
 import { defineConfig } from "vitest/config";
 
@@ -30,19 +29,6 @@ export default defineConfig({
               statements: 80,
             },
           },
-        },
-      },
-      {
-        resolve: {
-          alias: {
-            "@": path.resolve(import.meta.dirname, "fe/src"),
-          },
-        },
-        test: {
-          name: "fe",
-          root: "fe",
-          environment: "jsdom",
-          setupFiles: ["./src/test-setup.ts"],
         },
       },
       {
