@@ -7,7 +7,7 @@
 
 Fastify server that owns the pipeline: accepts a scene JSON, runs each scene through image generation
 (Flow) and TTS (Vbee), lets the user pause to review/regenerate, transcribes captions (Whisper), and
-renders the final MP4 via Remotion SSR. Exposes progress over SSE and serves the built `fe/` bundle.
+renders the final MP4 via Remotion SSR. Exposes progress over SSE and the REST API (`/api/*`) that skills drive; there is no UI and no MCP server.
 
 ## Backend rules (imported)
 

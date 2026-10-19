@@ -10,11 +10,10 @@ Philosophy: **write a failing test FIRST** before implementing/fixing — this i
 
 ## Tooling & location
 
-- Test framework: Vitest 4.1.x with `test.projects` at the root `vitest.config.ts` (one project per package: `be`, `fe`, `video`, `shared-schemas`).
+- Test framework: Vitest 4.1.x with `test.projects` at the root `vitest.config.ts` (one project per package: `be`, `video`, `shared-schemas`).
 - Run command: `pnpm test` (root, runs all projects); `pnpm --filter <pkg> test` for one package.
 - **Every package's `package.json` must define its own `"test"` script** (`"test": "cd .. && vitest run --project <name>"`). Without it, `pnpm --filter <pkg> test` silently runs zero tests and exits 0 — a false green, the worst failure mode for a verification-first project. When adding a new workspace package, add both the `test.projects` entry in root `vitest.config.ts` AND this script in the same change.
 - Tests live in: next to the source file, `*.test.ts` / `*.test.tsx` (e.g. `safe-viewport.ts` + `safe-viewport.test.ts`).
-- **FE network tests (msw):** Node's native `fetch` rejects a relative URL, so a test exercising `fe/src/lib/api-client.ts` for real (not via `vi.spyOn`) needs `msw`'s `setupServer().listen()` to patch `globalThis.fetch` **first**, then wrap the resulting (already-patched) fetch with a small relative→absolute URL resolver — patching in the other order makes msw's own request parsing fail on the relative URL before it ever matches a handler.
 
 ## Coverage
 

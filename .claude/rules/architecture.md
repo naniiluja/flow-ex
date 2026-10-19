@@ -2,7 +2,7 @@
 
 ## Layering & boundaries
 
-`be/`: routes (Fastify) → pipeline/services → domain (project state machine, scene model) ← providers (`ImageProvider`, `TtsProvider` implementations). `fe/`: pages/routes → hooks (TanStack Query + SSE) → API client. `video/`: pure composition + timing math, no IO, consumed by both the FE Player and the BE renderer.
+`be/`: routes (Fastify) → pipeline/services → domain (project state machine, scene model) ← providers (`ImageProvider`, `TtsProvider` implementations). `video/`: pure composition + timing math, no IO, consumed by the backend renderer.
 
 ## Dependency direction
 
@@ -12,7 +12,6 @@
 ## Design patterns
 
 - Backend: layered service architecture with the provider/strategy pattern for `ImageProvider` (Flow) and `TtsProvider` (Vbee), so a provider can be swapped or faked in tests without touching the pipeline.
-- Frontend: component-per-responsibility with shadcn/ui primitives; server state via TanStack Query, SSE pushes cache invalidation.
 
 ## Where things go
 
@@ -21,8 +20,7 @@
 - `be/src/providers/flow/` — `FlowImageProvider` (Playwright/CDP).
 - `be/src/providers/vbee/` — `VbeeTtsProvider`.
 - `be/src/store/` — project folder + `project.json` atomic read/write.
-- `packages/shared-schemas/` — zod schemas for the scene/script/project JSON contract, imported by both `be/` and `fe/` (`@flow-ex/shared-schemas`) so the shape is defined once, per DRY.
-- `fe/src/pages/` — route-level screens; `fe/src/hooks/` — TanStack Query hooks + SSE subscription.
+- `packages/shared-schemas/` — zod schemas for the scene/script/project JSON contract, imported by `be/` and `video/` (`@flow-ex/shared-schemas`) so the shape is defined once, per DRY.
 - `video/src/compositions/` — Remotion `TransitionSeries` composition; `video/src/timing/` — duration math + safe-viewport (covered by the 80% coverage target); `video/src/captions/` — TikTok-style caption component.
 
 ## Verifiable rules

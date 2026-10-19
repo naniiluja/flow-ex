@@ -22,7 +22,7 @@
 
 ## Monorepo
 
-- git lives at the root only; never git init inside `be/`, `fe/`, `video/`.
+- git lives at the root only; never git init inside `be/`, `video/`.
 
 ## Public repo hygiene
 
