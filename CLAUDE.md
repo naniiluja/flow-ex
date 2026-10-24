@@ -1,7 +1,8 @@
 # flow-ex (auto-video)
 
 > Managed by **CCF (Claude Context First)**. Workflow: Explore → Plan → Implement → Commit.
-> **STRICTLY SEQUENTIAL**: one task at a time, no parallel feature development — parallel edits to one codebase create merge conflicts and unreviewable interleaved changes.
+> **STRICTLY SEQUENTIAL for code**: one task at a time, no parallel feature development — parallel edits to one codebase create merge conflicts and unreviewable interleaved changes.
+> **Video production runs in PARALLEL where steps are independent** (narration, watermark removal, clip generation, render): start each in the background and serialize only a real data dependency (e.g. approved stills before clip jobs). The sequential rule above never justifies waiting on an unrelated step.
 > Ground every design decision in Context7 + Microsoft Learn.
 > Keep this spec always fresh with `/ccf:updatespec`.
 
@@ -42,6 +43,8 @@ is the still-image (Ken Burns) fallback. Clips are deliberately NOT part of the 
 @.claude/rules/script-writing.md
 @.claude/rules/script-review.md
 @.claude/rules/voice-tuning.md
+@.claude/rules/hand-drawn-video.md
+@.claude/rules/lemo-hd2d-video.md
 
 ## Current plan
 
