@@ -38,9 +38,14 @@ function fail(message) {
 
 const args = parseArgs(process.argv.slice(2));
 if (!args.project || !args.orders || !args["out-dir"]) {
-  fail("usage: --project <projectId or path> --orders <orders.json> --out-dir <dir> [--aspect 9:16|16:9]");
+  fail("usage: --project <projectId or path> --orders <orders.json> --out-dir <dir> [--aspect 9:16|16:9] [--craft <name>] [--look <list>]");
 }
 const aspect = args.aspect ?? "9:16";
+// The craft name and the look list go into every clip prompt: override both for a style whose stills
+// differ from the halftone collage (e.g. paper cut-out has no halftone dots), or the video model adds them.
+const craft = args.craft ?? "Paper-collage";
+const look =
+  args.look ?? "colored cardstock accents, uncoated paper grain, halftone dots, cream keylines, crisp cut edges and soft shadows";
 const orientation = aspect === "9:16" ? "vertical" : "horizontal";
 const projectDir = existsSync(args.project) ? resolve(args.project) : join(REPO, "projects", args.project);
 const project = JSON.parse(readFileSync(join(projectDir, "project.json"), "utf8"));
@@ -93,11 +98,11 @@ const jobs = project.scenes.map((scene, index) => {
   const start = join(framesDir, `scene-${number}-start.png`);
   run(["-f", "lavfi", "-i", `color=c=0x${backgroundHex(end)}:s=${String(scene.imageWidth)}x${String(scene.imageHeight)}`, "-frames:v", "1", start]);
   const prompt =
-    `Paper-collage stop-motion assembly, using the start frame as the exact empty first frame and the end frame as the exact completed last frame. ` +
+    `${craft} stop-motion assembly, using the start frame as the exact empty first frame and the end frame as the exact completed last frame. ` +
     `In one continuous locked-off ${orientation} shot, open on the empty flat paper field. ` +
     `Assemble the scene piece by piece with crisp physical stop-motion timing: ${orders[index]}. ` +
     `End by holding the supplied completed composition. ` +
-    `Preserve the exact ${aspect} framing, the color field, colored cardstock accents, uncoated paper grain, halftone dots, cream keylines, crisp cut edges and soft shadows. ` +
+    `Preserve the exact ${aspect} framing, the color field, ${look}. ` +
     `Restrained tactile 2D paper craft only. ` +
     `No scene cuts, no camera movement, no zoom, no morphing, no new objects, no text, no letters, no numbers, no logos, no watermark, no UI, no sound.`;
   return { scene: index + 1, start, end, prompt, duration: clipDuration(scene) };

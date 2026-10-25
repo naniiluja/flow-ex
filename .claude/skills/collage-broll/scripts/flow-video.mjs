@@ -81,6 +81,10 @@ const page = browser.contexts()[0]?.pages().find((candidate) => /flow\.google\.c
 if (!page) fail("no Chrome tab is open on a Flow project (https://flow.google.com/project/<uuid>)");
 
 const toggle = (text) => page.locator(".cdk-overlay-container .mat-button-toggle-button", { hasText: text }).first();
+// Flow follows the account language ("Khung hình" / "6 giây" on a Vietnamese account), so every label
+// the script matches by text accepts both; icon names and classes are the language-proof anchors.
+const FRAMES_LABEL = /Frames|Khung hình/;
+const durationLabel = (seconds) => new RegExp(`(?<!\\d)${String(seconds)}\\s?(s|giây)`);
 
 async function closeOverlays() {
   // Clicking the transparent backdrop is the reliable way to dismiss Flow's settings/menus.
@@ -103,10 +107,10 @@ async function applySettings(duration) {
     await page.waitForTimeout(900);
   }
   await toggle("Video").click();
-  await toggle("Frames").click();
+  await toggle(FRAMES_LABEL).click();
   await toggle(aspect).click();
   await toggle("720p").click();
-  await toggle(`${String(duration)}s`).click();
+  await toggle(durationLabel(duration)).click();
   await toggle("x1").click();
   const modelTrigger = page.locator(".cdk-overlay-container button.mat-mdc-menu-trigger").first();
   if (!(await modelTrigger.innerText()).includes(MODEL_NAME)) {
@@ -116,7 +120,7 @@ async function applySettings(duration) {
   }
   await page.waitForTimeout(400);
   const overlayText = await page.locator(".cdk-overlay-container").innerText();
-  const credits = Number(overlayText.match(/will use\s+(\d+)\s+credits/)?.[1]);
+  const credits = Number(overlayText.match(/(?:will use|sẽ tốn)\s+(\d+)\s+(?:credits|tín dụng)/)?.[1]);
   await closeOverlays();
   return credits;
 }
@@ -235,7 +239,7 @@ async function download(job, position) {
   await page.waitForTimeout(600);
   await tile.locator("button.mat-mdc-menu-trigger").first().click();
   await page.waitForTimeout(600);
-  await page.locator(".mat-mdc-menu-panel [role=menuitem]", { hasText: /Download/i }).first().hover();
+  await page.locator(".mat-mdc-menu-panel [role=menuitem]", { hasText: /Download|Tải xuống/i }).first().hover();
   await page.waitForTimeout(700);
   // 60s was too tight once: the clip was already generated and charged, then "Downloading your
   // video..." outlasted the wait and the rerun had to pay for the same clip again.
@@ -287,7 +291,7 @@ try {
   // Leave Flow ready for the image pipeline, which expects Image mode.
   await page.locator("button.settings-trigger-button").first().click().catch(() => undefined);
   await page.waitForTimeout(600);
-  await toggle("Image").click().catch(() => undefined);
+  await toggle(/Image|Hình ảnh/).click().catch(() => undefined);
   await closeOverlays();
   await browser.close();
 }

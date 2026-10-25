@@ -3,7 +3,7 @@
 // using the ffmpeg already installed for `be/` (`@ffmpeg-installer/ffmpeg`).
 //
 //   node assemble-video.mjs --project <projectId> [--clips <dir with scene-01.mp4 ...>]
-//     [--stills <dir with scene-01.png ...>] [--out file.mp4] [--music bed.m4a] [--keep-work 1]
+//     [--stills <dir with scene-01.png ...>] [--out file.mp4] [--music bed.m4a] [--keep-work 1] [--speedup 0]
 //
 // Every scene needs a clip (`--clips`) OR a still (`--stills`); a scene with both uses the clip. A still
 // becomes a slow Ken Burns push (zoom in on even scenes, out on odd ones, 6% like the Remotion version),
@@ -200,7 +200,9 @@ project.scenes.forEach((scene, index) => {
   const seconds = frames / FPS;
   // A clip whose last piece lands after the scene ends is sped up to finish with a short hold,
   // instead of being cut (measured: 9 of 12 clips lost their final pieces, e.g. the match flame).
-  const speed = useClip
+  // `--speedup 0` keeps clips at 1x: for clips that never stop moving (hand-painted animation) the freeze
+  // detector would report "moves until the end" and speed every one of them up by the maximum.
+  const speed = useClip && args.speedup !== "0"
     ? Math.min(MAX_CLIP_SPEEDUP, Math.max(1, motionEndSeconds(clip) / Math.max(seconds - CLIP_END_HOLD_SECONDS, 1)))
     : 1;
   scenes.push({
