@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Việt sử studio</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Permanent+Marker&display=block">
+<style>
+  html, body { margin: 0; background: #1b1820; color: #eee; font: 13px system-ui, sans-serif; }
+  main { padding: 12px; display: grid; gap: 8px; }
+  #out { width: min(100%, 540px); aspect-ratio: 9 / 16; height: auto; background: #F3EBDC; }
+  .p5Canvas { display: none !important; }
+  .bar { display: flex; gap: 10px; align-items: center; max-width: 1280px; }
+  #scrub { flex: 1; }
+  #tt { font-variant-numeric: tabular-nums; min-width: 190px; }
+</style>
+<script src="node_modules/p5/lib/p5.min.js"></script>
+<script src="node_modules/p5.brush/dist/p5.brush.js"></script>
+</head>
+<body>
+<main>
+  <canvas id="out" width="1080" height="1920"></canvas>
+  <div class="bar"><input id="scrub" type="range" min="0" max="60" step="0.0417" value="0"><span id="tt">loading…</span></div>
+</main>
+<!-- engine (no Clawd: the people are drawn by vs_people.js) -->
+<script src="src/config-vietsu.js"></script>
+<script src="src/core.js"></script>
+<script src="src/timeline.js"></script>
+<!-- Việt sử: people, scenery and props, then the shots -->
+<script src="src/scenes/vs_people.js"></script>
+<script src="src/scenes/vs_world.js"></script>
+<script src="src/scenes/vs_build.js"></script>
+<script src="src/scenes/vs_things.js"></script>
+<script src="src/scenes/vs_animals.js"></script>
+<script src="src/scenes/vs_times.js"></script>
+<script src="src/scenes/vs_main.js"></script>
+<script src="src/scenes/vs_c01.js"></script>
+<script src="src/scenes/vs_c02.js"></script>
+<script src="src/scenes/vs_c03.js"></script>
+<script src="src/scenes/vs_c04.js"></script>
+<script src="src/scenes/vs_c05.js"></script>
+<script src="src/scenes/vs_c06.js"></script>
+<script src="src/scenes/vs_c07.js"></script>
+<script src="src/scenes/vs_c08.js"></script>
+<script src="src/scenes/vs_c09.js"></script>
+<script src="src/scenes/vs_c10.js"></script>
+<script src="src/scenes/vs_c11.js"></script>
+<script src="src/scenes/vs_c12.js"></script>
+<script src="src/scenes/vs_anime.js"></script>
+<script src="src/scenes/vs_pixel.js"></script>
+<script src="src/scenes/vs_subaru_data.js"></script>
+<script src="src/scenes/vs_subaru.js"></script>
+<script src="src/scenes/vs_doll.js"></script>
+<script src="src/scenes/vs_dollcast.js"></script>
+<script src="src/scenes/vs_dollprops.js"></script>
+<script src="src/scenes/vs_dolladapt.js"></script>
+<script src="src/scenes/vs_dollworld.js"></script>
+<script src="src/scenes/vs_noto_data.js"></script>
+<script src="src/scenes/vs_noto.js"></script>
+<script src="src/scenes/vs_test.js"></script>
+<script>vsInstallShots();</script>
+<script>
+  const q = new URLSearchParams(location.search).get('loop'); if (q && LOOPS[q]) window.LOOP = LOOPS[q];
+</script>
+</body>
+</html>
