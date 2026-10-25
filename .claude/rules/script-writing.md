@@ -17,7 +17,17 @@ và `.claude/skills/write-video-script/references/schema.md`. Cách chấm bản
 - Nhịp nằm ở dấu ngắt: xen câu ngắn (3-6 từ) với câu 12-18 từ. Từ láy tối đa 1-2 chỗ mỗi cảnh.
 - Người nghe không có trang giấy để đọc lại: nêu tên nhân vật chính ngay lần đầu và giữ MỘT cách gọi; lặp tên hoặc chức danh thay vì "ông", "bà", "người ấy" khi có hai người cùng giới. Tên riêng, địa danh, mốc thời gian chưa giới thiệu thì không dùng như đã biết. Một cảnh không quá một dữ kiện mới.
 - Số và năm viết thành chữ theo cách nói ("tám trăm năm trước"); giọng đọc có thể đọc "1224" thành "hai mươi tư".
+- Viết cho tai, không cho mắt: tránh cụm nghe trùng tên riêng trong cùng video. Video lịch sử nói "nhà Trần, nhà
+  Nguyên" thì "nhà mình" bị nghe thành "nhà Minh"; dùng "nước mình", "các cụ ta".
 - Thuật ngữ bản địa của thời đại, không mượn từ nước ngoài: truyện Việt dùng "vua", "hoàng hậu", "triều đình", không "nữ hoàng", "lâu đài". Nói rõ "sử chép" và "người ta đồn"; không bịa chi tiết rùng rợn.
+
+## Chính tả và cấu trúc câu (người dùng yêu cầu, 2026-10-25)
+
+- Theo `.claude/skills/write-video-script/references/vi-writing-guide.md`: dấu thanh kiểu mới (hoà, khoá, tuỳ), y trong từ Hán Việt (tỷ, kỹ), mỗi câu tối đa một "thì", không "bởi", không mở câu bằng "Việc/Sự/Trong quá trình", không "một cách + tính từ".
+- Máy soát bằng `python3 .claude/skills/write-video-script/scripts/check_script.py <story.md>`, sửa hết rồi cho MỘT agent review và tự sửa một lượt.
+- Số: lời đọc viết bằng chữ; phụ đề và chữ trên hình viết bằng số (dấu chấm nghìn, dấu phẩy thập phân).
+- Video kể chuyện có câu chào ngay SAU câu móc (giây đầu vẫn là móc) và đoạn kết cảm ơn, hẹn gặp lại.
+- Chuyện dựng lại kể ngôi thứ nhất thì nói rõ là dựng lại ở đoạn kết; mỗi con số có nguồn trong `FACTS.md` của phim.
 
 ## Văn kể chuyện dài (học từ văn tiểu thuyết dịch)
 

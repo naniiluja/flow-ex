@@ -25,3 +25,8 @@ chrome-profile/
 
 # Output of the claude-animation-base skill
 .claude/skills/claude-animation-base/out/
+
+# Third-party IP kept only on the owner's machine (public repo): the Subaru (Re:Zero) trace used in a parked p5 test.
+# vietsu.html still loads them locally; vs_test.js guards the call with try/catch, so a clone without them still runs.
+.claude/skills/claude-animation-base/src/scenes/vs_subaru.js
+.claude/skills/claude-animation-base/src/scenes/vs_subaru_data.js

@@ -10,6 +10,10 @@ Mọi thông số dưới đây người dùng đã chọn bằng tai qua mẫu 
 - Ngắt đoạn 1,4s là khe "dừng kịch tính": chỉ đặt trước chi tiết lộ ra và trước lời thoại sau dấu hai chấm (người dùng khen nhịp dừng trước "Phạm Văn Út!").
 - Vbee không có tham số cao độ: `emphasisIntensity` trả 400 trên mọi giọng đã thử, tài liệu không nêu SSML, đừng chèn thẻ hay chữ in hoa.
 - Khoảng nghỉ đo thật: chấm 0,45-0,54s; phẩy 0,22-0,29s; "…" khoảng 0,22s; hai chấm KHÔNG ỔN ĐỊNH (0 đến 0,26s); câu ≤4 từ sau dấu chấm có thể bị nuốt nghỉ. Cần chắc có nghỉ thì dùng chấm, phẩy hoặc ngắt đoạn.
+- Lời thoại sau dấu hai chấm đặt trong ngoặc kép “…” (narrate-expressive tách khối); không đặt từ đệm ngay trước dấu hai chấm.
+- Sau narrate-expressive luôn chạy `collage-broll/scripts/prosody/pauses.py` (cần `WHISPER_DIR`): mỗi cuối câu ≥0,45s, chọn khoảng lặng DÀI nhất trong ±0,5s quanh mốc whisper; chỗ không có khoảng lặng thật chỉ cắt khi whisper nghe nửa trước tận cùng đúng chữ cuối câu và nửa sau mở đầu đúng chữ kế (so sau khi bỏ dấu, lệch ≤1 ký tự), không thì in `SKIP`.
+- Mỗi dòng `SKIP` phải xử lý tay: cắt thử các điểm quanh ranh giới, whisper hai nửa, áp điểm đúng bằng `prosody/insert_pause.py <t:dur>`. Sau mọi lần chèn, whisper nghe hai phía của từng khoảng chèn (không chèn giữa một từ).
+- Lời hô một chữ trong ngoặc kép (“Đánh!”): `prosody/shout.py` rút khoảng trước về 0,7s và chèn 0,6s sau; điểm tách chọn bằng whisper như trên vì Vbee nối âm cuối chữ hô sang chữ kế.
 
 ## Truyện dài: MỘT file audio
 
