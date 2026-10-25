@@ -14,6 +14,12 @@ Mọi thông số dưới đây người dùng đã chọn bằng tai qua mẫu 
 - Sau narrate-expressive luôn chạy `collage-broll/scripts/prosody/pauses.py` (cần `WHISPER_DIR`): mỗi cuối câu ≥0,45s, chọn khoảng lặng DÀI nhất trong ±0,5s quanh mốc whisper; chỗ không có khoảng lặng thật chỉ cắt khi whisper nghe nửa trước tận cùng đúng chữ cuối câu và nửa sau mở đầu đúng chữ kế (so sau khi bỏ dấu, lệch ≤1 ký tự), không thì in `SKIP`.
 - Mỗi dòng `SKIP` phải xử lý tay: cắt thử các điểm quanh ranh giới, whisper hai nửa, áp điểm đúng bằng `prosody/insert_pause.py <t:dur>`. Sau mọi lần chèn, whisper nghe hai phía của từng khoảng chèn (không chèn giữa một từ).
 - Lời hô một chữ trong ngoặc kép (“Đánh!”): `prosody/shout.py` rút khoảng trước về 0,7s và chèn 0,6s sau; điểm tách chọn bằng whisper như trên vì Vbee nối âm cuối chữ hô sang chữ kế.
+- Vbee trả 400 "hate speech" cho chữ tục ("đéo"): lời đọc dùng chữ thay ("quái"), bản trộn đè tiếng bíp 1 kHz, chữ
+  trên hình ghi "đ**". Tên nước ngoài khó đọc: đưa mẫu A/B vài cách phiên âm ("Stand" chọn "Xờ ten", "Xtan" đọc thành "tan").
+- Sửa lời một câu sau khi đã đo mốc: chỉ cho Vbee đọc lại ĐOẠN chứa câu đó, cắt sạch im lặng hai đầu, thay vào giữa hai
+  khoảng nghỉ đoạn, whisper hai mối nối, rồi dời mọi mốc phía sau đúng độ dài chênh lệch.
+- Nhấn cảm xúc bằng Praat sau Vbee (`emphasis.py --cues`, nới cao độ, đổi nhịp từng câu): người dùng nghe mẫu A/B và chê
+  "quá tay, nghe giả", bản giảm một nửa cũng không chọn. Mặc định không dùng; muốn cảm xúc thật thì giọng người thu.
 
 ## Truyện dài: MỘT file audio
 

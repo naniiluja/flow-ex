@@ -25,6 +25,10 @@ có nhân vật hay cảnh do Flow sinh (sprite hd-2d, sitcom 2D, collage...). C
   thang), không phóng lại mỗi khung (thở = nhích 2px). Phóng MỘT lần Lanczos, alpha làm mờ 1,6px rồi kéo dốc lại;
   bỏ vòng `ink_outline` khi ảnh Flow đã có viền sạch (vòng 1px vẽ trên mặt nạ 341px ra viền răng cưa). Đo viền sáng
   trên mép (trừ mép cắt dưới đáy) trước khi bỏ: 0,14%.
+- Phóng nét bằng AI (Real-ESRGAN `realesrgan-x4plus-anime`) khi ô nguồn nhỏ hơn cỡ hiển thị (ô bảng miệng 3x3 chỉ
+  341 px, khung tròn 710 px): phóng MỘT mặt gốc rồi dán mảng miệng/mắt đã làm mờ mép. Phóng từng mặt riêng làm sắc độ
+  quanh miệng lệch vài mức mỗi hình, 12 hình/giây thành "nháy sáng tối"; đo độ sáng nửa trên mặt qua các khung = 0.
+  Mô hình xoá tàn nhang như nhiễu: trả lại trên vùng da chỗ bản Lanczos tối hơn.
 
 ## Soát bằng mắt (máy không bắt được)
 
@@ -35,6 +39,10 @@ có nhân vật hay cảnh do Flow sinh (sprite hd-2d, sitcom 2D, collage...). C
 - Bản bị loại ghi lý do vào `bad-frames.json`, không xoá im lặng; người dùng chọn bản cuối.
 
 ## Trung thực
+
+- Video công khai dùng nhân vật dẫn GỐC của người dùng (Jolie, "Chô li kể"), không dùng nhân vật có bản quyền (Rem):
+  vẽ lại nhân vật người khác là tác phẩm phái sinh, cần phép (Luật SHTT Điều 20); trích dẫn bình luận (Điều 25) chỉ
+  che việc dùng ngắn tranh gốc có ghi nguồn. Prompt ghi "an original character, not based on any existing character".
 
 - Hình do Flow sinh luôn mang SynthID: không bao giờ ghi "No AI" hay "vẽ tay". Định vị: hoạt hình Việt làm có hỗ
   trợ AI, kịch bản, nhân vật, đạo diễn, diễn hoạt là của người làm.
