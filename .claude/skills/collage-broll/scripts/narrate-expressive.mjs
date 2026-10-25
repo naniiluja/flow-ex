@@ -13,7 +13,8 @@
 //
 //   node --env-file=.env .claude/skills/collage-broll/scripts/narrate-expressive.mjs \
 //     --project <id> [--voice <code>] [--dir narration-expressive] [--paragraphs-from narration] \
-//     [--story story.md] [--pitch 1|0] [--speed 0.95] [--force 1]
+//     [--story story.md] [--pitch 1|0] [--speed 0.95] [--force 1] [--cues cues.json]
+//   --cues: the director's per-line pitch range / tempo / focus for emotional lines (see prosody/emphasis.py)
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -164,7 +165,7 @@ if (pitch) {
   writeFileSync(join(outDir, "words.json"), JSON.stringify(words));
   writeFileSync(join(outDir, "para-starts.json"), JSON.stringify(blockStartWord));
   finalWav = join(outDir, "emphasis.wav");
-  const info = JSON.parse(python("emphasis.py", [cleanWav, join(outDir, "words.json"), join(outDir, "para-starts.json"), finalWav, join(outDir, "time-map.json")], "emphasis.py"));
+  const info = JSON.parse(python("emphasis.py", [cleanWav, join(outDir, "words.json"), join(outDir, "para-starts.json"), finalWav, join(outDir, "time-map.json"), ...(args.cues ? [resolve(args.cues)] : [])], "emphasis.py"));
   log(`emphasis: ${String(info.focus_words)} focus words, audio ${String(info.old_s)}s -> ${String(info.new_s)}s`);
   const map = JSON.parse(readFileSync(join(outDir, "time-map.json"), "utf8"));
   remap = (ms) => {
