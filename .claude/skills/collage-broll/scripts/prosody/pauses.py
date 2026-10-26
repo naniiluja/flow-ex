@@ -79,6 +79,11 @@ for i in range(len(W) - 1):
         inserts.append((m * hop, int((TARGET - have) * sr), W[i]["text"].strip(), have))
 out, last = [], 0
 ramp = np.linspace(1, 0, int(.008 * sr))[:, None]     # 8 ms fades: a verified cut can still sit inside a voiced sound
+# two sentence ends can resolve to the same quiet run (a 1-2 word sentence): keep one insert per cut point
+kept, prev = [], 0
+for q in sorted({at: (at, n, w, h) for at, n, w, h in sorted(inserts, key=lambda q: q[1])}.values()):
+    if q[0] - prev >= 2 * len(ramp): kept.append(q); prev = q[0]   # closer than the two fades: the first insert covers it
+inserts = kept
 for at, n, word, have in inserts:
     seg = x[last:at].astype(float)
     if last: seg[:len(ramp)] *= ramp[::-1]
