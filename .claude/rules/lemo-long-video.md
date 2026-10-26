@@ -1,0 +1,23 @@
+# Phim dài lemo-opuscar dựng theo đoạn (Broadcast News + Montage)
+
+Áp cho video dài nhiều hồ sơ/chương dựng bằng engine data-driven của lemo-opuscar (phim mẫu "Mười hồ sơ Araki bỏ
+dở", `~/Developer/lemo-films/jojo-mysteries`, 2026-10-27). Kịch bản theo `script-writing.md`, giọng theo `voice-tuning.md`.
+
+## Hình
+
+- Nền là footage anime màu cắt 2-4 s theo vế câu, nhạc nền riêng cho từng hồ sơ; chỗ lộ ra chuyển sang montage cắt
+  theo phách. Ảnh tĩnh + khung chữ (Visual Investigation) bị chê "AI slop", không dùng lại.
+- Chữ: giấy xé mặc định, telop Nhật cho câu đấm, SFX katakana 2-3 lần mỗi hồ sơ; không hộp chữ nhật.
+- Vòng khoanh nét bút (lực bút + đuôi văng) ôm đúng vật, lề 10-20 %, chỉ vẽ trên khung đã freeze. Đo toạ độ trên
+  still có lưới ở đúng mốc freeze (`fit.mjs`), rồi xác nhận lại trên một khung cắt từ mp4 cuối. Mốc freeze phải rơi
+  vào lúc vật đã hiện (ảnh Polaroid còn đen thì chưa khoanh); không thấy vật thì bỏ vòng, giữ ghi chú.
+
+## Render song song theo đoạn
+
+- Mỗi đoạn (hồ sơ) là một file phim riêng, render riêng ra `segments/<seg>.mp4` -14 LUFS, rồi ghép bằng concat
+  `-c copy` (mọi đoạn cùng 1920x1080, 30 fps, AAC 48 kHz).
+- Hai build không bao giờ chạy trong cùng một thư mục engine: `out/mix.wav`, `out/video.mp4`, `data/events.json` bị ghi
+  đè. Chạy song song thì chép thư mục engine (bỏ `frames/`, `out/`, `work/`) và symlink `frames/` về bản gốc.
+- Cache khung (`frames/`) đặt khoá theo id nguồn, không theo file: hai phim dùng chung cache thì id nguồn phải khác
+  nhau (`meme04`, không `meme`), nếu không phim sau lấy nhầm khung của phim trước.
+- Sau khi ghép: `blackdetect`, tờ ảnh mỗi 20 s, đo lại mốc chương từ độ dài thật của từng đoạn trước khi đăng.
