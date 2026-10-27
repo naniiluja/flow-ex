@@ -21,3 +21,15 @@ dở", `~/Developer/lemo-films/jojo-mysteries`, 2026-10-27). Kịch bản theo `
 - Cache khung (`frames/`) đặt khoá theo id nguồn, không theo file: hai phim dùng chung cache thì id nguồn phải khác
   nhau (`meme04`, không `meme`), nếu không phim sau lấy nhầm khung của phim trước.
 - Sau khi ghép: `blackdetect`, tờ ảnh mỗi 20 s, đo lại mốc chương từ độ dài thật của từng đoạn trước khi đăng.
+
+## Bản dọc 9:16 cho Shorts
+
+- Engine dọc nằm ở `~/Developer/lemo-films/pocoloco-short/engine` (W/H 1080x1920, `build.sh` có `--size 1080x1920`).
+  Phụ đề tự xuống dòng ở y khoảng 1490, logo kênh và dòng nguồn ở góc trên phải (y 250 và 330).
+- Ảnh tĩnh phải nằm trong thư mục engine (`assets/img/`): trang chỉ phục vụ thư mục đó, `../img` trả 404.
+- `mix.py` đòi có `music.drive`: phim nào cũng khai báo một bản drive phủ các shot montage.
+- Khung dọc cắt mất hai mép của footage 16:9: chữ hay vật nằm ngang (tờ báo, bảng) dùng ảnh tĩnh, đặt `f` cho
+  shot có nhân vật ở mép.
+- Lỗ meme hay clip chỉ đặt ở khoảng lặng cuối câu đo trên audio, rồi whisper hai phía của lỗ trước khi render.
+- Nhạc nền liền mạch: dưới meme và clip thì hạ nhạc (khoảng -12 dB), không tắt; drive vào ra bằng crossfade khoảng 1 s;
+  đổi nhạc thì crossfade 1,5-2 s ở chỗ nghỉ đoạn. Phim dài render theo đoạn thì trộn nhạc một lần trên cả timeline.
