@@ -33,3 +33,6 @@ dở", `~/Developer/lemo-films/jojo-mysteries`, 2026-10-27). Kịch bản theo `
 - Lỗ meme hay clip chỉ đặt ở khoảng lặng cuối câu đo trên audio, rồi whisper hai phía của lỗ trước khi render.
 - Nhạc nền liền mạch: dưới meme và clip thì hạ nhạc (khoảng -12 dB), không tắt; drive vào ra bằng crossfade khoảng 1 s;
   đổi nhạc thì crossfade 1,5-2 s ở chỗ nghỉ đoạn. Phim dài render theo đoạn thì trộn nhạc một lần trên cả timeline.
+- Clip ngắn hơn shot thì hình đứng im ở khung cuối: đặt `rate = min(1, (dài clip - in) / dài shot × 0,97)` cho mọi shot
+  và mọi nửa `split`, lấy độ dài shot từ bảng `tools/plan.mjs` in ra (cách làm trong `gyro-short`, 2026-10-28).
+- `plan.mjs` ghi đè `data/plan.json` của film đang chạy: dựng ảnh bìa (`film/thumb.json`) chỉ SAU khi render xong.

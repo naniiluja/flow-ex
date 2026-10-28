@@ -13,7 +13,7 @@ và `.claude/skills/write-video-script/references/schema.md`. Cách chấm bản
 
 - Mỗi câu một ý, đủ chủ ngữ và vị ngữ; trạng ngữ đặt đầu câu. Câu cụt (thiếu vị ngữ) chỉ dùng để nhấn và tối đa một lần mỗi video.
 - Từ thuần Việt, hằng ngày ("làm" thay "triển khai"); bỏ Hán Việt hoa mỹ ("tích luỹ", "khởi sắc", "hành trình") và danh từ trừu tượng ("giá trị", "động lực"). Mỗi ý phải có tên riêng, con số hoặc vật nhìn thấy được.
-- Chọn MỘT giọng văn cho cả video: kể mộc như người bạn (mặc định), dứt khoát (kịch tính, châm biếm), hoặc trau chuốt (chỉ khi được yêu cầu, vì câu dài khó nghe). Không trộn.
+- Video anime: giọng fan bình luận theo `script-fan-voice.md` (mặc định từ 2026-10-28). Video khác: chọn MỘT giọng văn cho cả video: kể mộc như người bạn, dứt khoát (kịch tính, châm biếm), hoặc trau chuốt (chỉ khi được yêu cầu, vì câu dài khó nghe). Không trộn.
 - Nhịp nằm ở dấu ngắt: xen câu ngắn (3-6 từ) với câu 12-18 từ. Từ láy tối đa 1-2 chỗ mỗi cảnh.
 - Người nghe không có trang giấy để đọc lại: nêu tên nhân vật chính ngay lần đầu và giữ MỘT cách gọi; lặp tên hoặc chức danh thay vì "ông", "bà", "người ấy" khi có hai người cùng giới. Tên riêng, địa danh, mốc thời gian chưa giới thiệu thì không dùng như đã biết. Một cảnh không quá một dữ kiện mới.
 - Số và năm viết thành chữ theo cách nói ("tám trăm năm trước"); giọng đọc có thể đọc "1224" thành "hai mươi tư".

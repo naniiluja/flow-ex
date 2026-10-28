@@ -42,6 +42,7 @@ is the still-image (Ken Burns) fallback. Clips are deliberately NOT part of the 
 @.claude/rules/video.md
 @.claude/rules/script-writing.md
 @.claude/rules/script-review.md
+@.claude/rules/script-fan-voice.md
 @.claude/rules/voice-tuning.md
 @.claude/rules/hand-drawn-video.md
 @.claude/rules/lemo-hd2d-video.md

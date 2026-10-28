@@ -61,5 +61,8 @@ Bài học rút từ series lịch sử 91 cảnh (2026-10-22/23). Áp cho mọi
 - Khi cắt một bộ phận ra để vẽ lại (cánh tay), vá phần thân nó từng che, nếu không lúc cử động sẽ lộ lỗ.
 - Đổi lời thì mọi `cue(S, từ, n, fb)` âm thầm rơi về `fb`: chạy bộ kiểm cue sau `build-times.mjs`.
 - ffmpeg: `apad` + `-shortest` trong `filter_complex` treo vô hạn; dùng `apad=whole_dur=<giây>` + `-t`.
+- ffmpeg trong vòng `while read ... < cuts.tsv` phải có `-nostdin`, nếu không nó nuốt đầu dòng kế tiếp và tạo file
+  sai tên (`1_three_worlds.mp4` thay `11_three_worlds.mp4`, Bleach Short 2026-10-28). Cache khung của engine lemo khoá
+  theo nguồn + in + rate, KHÔNG theo `keep`: đổi `keep` thì xoá thư mục `frames/<src>_*` rồi chạy lại `prep.py`.
 - Chạy nền mà pipe qua `grep` thì dòng tiến độ bị đệm, file output trống: đếm file kết quả hoặc `pgrep` để biết tiến độ.
 - Kiểm tra chuyển cảnh bằng `render.mjs --sheet=<các mốc quanh chỗ nối>`; soát cả video bằng `viet-su/sheet.mjs` theo nhóm 4 cảnh.
