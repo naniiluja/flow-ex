@@ -1,6 +1,6 @@
 # Task 010 — App shell: sidebar, dashboard, danh sách project
 
-**Trạng thái:** todo
+**Trạng thái:** dropped
 **Predecessor:** không (chạy song song, worktree riêng)
 **Chi tiết đầy đủ:** xem "Task 010" trong `/Users/naniiluja/.claude/plans/t-i-mu-n-s-a-l-i-moonlit-giraffe.md`
 

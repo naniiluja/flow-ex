@@ -1,6 +1,6 @@
 # Task 011 — Lưới ảnh: scene hiển thị dạng ô
 
-**Trạng thái:** todo
+**Trạng thái:** dropped
 **Predecessor:** không (chạy song song, worktree riêng — sẽ đụng `app.tsx`/`AppShell` của task 010 lúc merge, đã được ngài chấp nhận)
 **Chi tiết đầy đủ:** xem "Task 011" trong `/Users/naniiluja/.claude/plans/t-i-mu-n-s-a-l-i-moonlit-giraffe.md`
 

@@ -1,6 +1,6 @@
 # Task 017 — MCP đường tạo và chạy: create_project, start_render, get_logs
 
-**Trạng thái:** in-review
+**Trạng thái:** done
 
 ## Kết quả thực hiện
 

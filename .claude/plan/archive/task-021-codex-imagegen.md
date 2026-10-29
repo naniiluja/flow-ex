@@ -1,6 +1,6 @@
 # Task 021 — Tích hợp ImageGen của Codex qua MCP
 
-**Trạng thái:** in-progress
+**Trạng thái:** done
 **Ngày lập:** 2026-09-19
 **Predecessor:** kiểm tra tương thích với MCP hiện có của task 016-020; giữ nguyên các thay đổi đang làm của người dùng.
 **Phạm vi hiện được yêu cầu:** triển khai đang thực hiện; các lát cắt A–E đã có mã nguồn và kiểm thử mục tiêu, lát cắt F còn chờ smoke test HTTP/ImageGen ngoài sandbox.

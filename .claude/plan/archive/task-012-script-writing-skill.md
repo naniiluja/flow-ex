@@ -1,6 +1,6 @@
 # Task 012 — Skill viết kịch bản
 
-**Trạng thái:** todo
+**Trạng thái:** done
 **Predecessor:** không (không chạm code, chạy song song tự do)
 **Chi tiết đầy đủ:** xem "Task 012" trong `/Users/naniiluja/.claude/plans/t-i-mu-n-s-a-l-i-moonlit-giraffe.md`
 

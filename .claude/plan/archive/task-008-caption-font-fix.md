@@ -1,6 +1,6 @@
 # Task 008 — Sửa phụ đề: font tiếng Việt không còn bể
 
-**Trạng thái:** todo
+**Trạng thái:** done
 **Predecessor:** không (chạy song song với 009-014, worktree riêng)
 **Chi tiết đầy đủ:** xem "Task 008" trong `/Users/naniiluja/.claude/plans/t-i-mu-n-s-a-l-i-moonlit-giraffe.md`
 

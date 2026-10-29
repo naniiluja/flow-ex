@@ -1,6 +1,6 @@
 # Task 018 — MCP đường duyệt: approve_scene, regenerate_scene, get_output
 
-**Trạng thái:** in-review
+**Trạng thái:** done
 
 ## Kết quả thực hiện
 

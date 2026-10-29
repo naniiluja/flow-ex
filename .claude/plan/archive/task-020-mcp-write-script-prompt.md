@@ -1,6 +1,6 @@
 # Task 020 — MCP prompt gắn skill viết kịch bản
 
-**Trạng thái:** in-review
+**Trạng thái:** done
 
 ## Kết quả thực hiện
 

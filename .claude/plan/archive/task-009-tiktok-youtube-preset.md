@@ -1,6 +1,6 @@
 # Task 009 — Preset TikTok / YouTube xuyên suốt
 
-**Trạng thái:** todo
+**Trạng thái:** done
 **Predecessor:** không (chạy song song, worktree riêng)
 **Chi tiết đầy đủ:** xem "Task 009" trong `/Users/naniiluja/.claude/plans/t-i-mu-n-s-a-l-i-moonlit-giraffe.md`
 

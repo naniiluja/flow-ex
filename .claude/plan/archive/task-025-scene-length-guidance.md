@@ -1,6 +1,6 @@
 # Task 025 — Đồng bộ hướng dẫn độ dài scene
 
-**Trạng thái:** in-review
+**Trạng thái:** done
 **Predecessor:** 024
 **discipline:** off
 **Chi tiết đầy đủ:** xem "Task 025" trong `/Users/naniiluja/.claude/plans/t-m-hi-u-xem-h-woolly-snowglobe.md`

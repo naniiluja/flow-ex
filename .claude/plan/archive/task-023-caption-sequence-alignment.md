@@ -1,6 +1,6 @@
 # Task 023 — Căn chỉnh phụ đề theo kịch bản bằng Needleman-Wunsch
 
-**Trạng thái:** in-review
+**Trạng thái:** done
 **Predecessor:** 022
 **discipline:** on
 **Chi tiết đầy đủ:** xem "Task 023" trong `/Users/naniiluja/.claude/plans/t-m-hi-u-xem-h-woolly-snowglobe.md`

@@ -1,6 +1,6 @@
 # Task 016 — Gắn MCP vào be và công cụ đọc get_status
 
-**Trạng thái:** in-review
+**Trạng thái:** done
 
 ## Kết quả thực hiện
 

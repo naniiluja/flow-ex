@@ -1,6 +1,6 @@
 # Task 022 — Ngắt nghỉ đúng câu: gửi `clientPause` + `emphasisIntensity` tới Vbee
 
-**Trạng thái:** in-review
+**Trạng thái:** done
 **Predecessor:** 021
 **discipline:** on
 **Chi tiết đầy đủ:** xem "Task 022" trong `/Users/naniiluja/.claude/plans/t-m-hi-u-xem-h-woolly-snowglobe.md`

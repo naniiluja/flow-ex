@@ -1,6 +1,6 @@
 # Task 013 — Ảnh tham chiếu: nhân vật và bối cảnh đồng bộ
 
-**Trạng thái:** in-review (phạm vi rút gọn có chủ đích, xem "Đã làm thực tế" bên dưới)
+**Trạng thái:** done (phạm vi rút gọn có chủ đích, xem "Đã làm thực tế" bên dưới)
 
 ## Đã làm thực tế (2026-09-17, Rem tự làm trực tiếp, không qua subagent)
 

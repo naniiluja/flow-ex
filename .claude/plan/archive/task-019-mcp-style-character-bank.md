@@ -1,6 +1,6 @@
 # Task 019 — MCP bước hỏi phong cách và bank nhân vật
 
-**Trạng thái:** in-progress
+**Trạng thái:** done
 **Predecessor:** 018
 **discipline:** off
 

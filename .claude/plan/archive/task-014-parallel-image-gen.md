@@ -1,6 +1,6 @@
 # Task 014 — Gen ảnh song song trên một tab Flow
 
-**Trạng thái:** todo
+**Trạng thái:** done
 **Predecessor:** không (chạy song song, worktree riêng, viết trên giả định `flow-automation.ts` CHƯA có thay đổi của task 013)
 **Chi tiết đầy đủ:** xem "Task 014" trong `/Users/naniiluja/.claude/plans/t-i-mu-n-s-a-l-i-moonlit-giraffe.md`
 

@@ -1,6 +1,6 @@
 # Task 024 — Chuyển cảnh đa dạng và Ken Burns có nhịp
 
-**Trạng thái:** in-review
+**Trạng thái:** done
 **Predecessor:** 023
 **discipline:** on
 **Chi tiết đầy đủ:** xem "Task 024" trong `/Users/naniiluja/.claude/plans/t-m-hi-u-xem-h-woolly-snowglobe.md`
