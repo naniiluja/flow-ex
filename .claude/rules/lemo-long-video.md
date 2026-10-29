@@ -39,3 +39,5 @@ dở", `~/Developer/lemo-films/jojo-mysteries`, 2026-10-27). Kịch bản theo `
 - Mỗi Short đổi phong cách dựng (đã duyệt: Sports Telestrator `gyro-thay-stand`, Game Show `sandman-short`) và dùng nhạc
   CHƯA từng dùng ở phim nào (soát `~/Developer/lemo-films/*/music`), chọn theo bối cảnh truyện (SBR miền Tây 1890: western).
   Đưa tờ storyboard 6-10 khung dựng thật cho người dùng duyệt TRƯỚC khi gọi Vbee.
+- Kino Montage dọc (`erina-coffin-short`, người dùng khen "ngon" 2026-10-30): footage anime đơn sắc trong khung chéo
+  đỏ-đen, số khổng lồ theo mốc năm, khe nghỉ chấm đỏ trên nền đen trước cú lộ (blackdetect báo là chủ ý).

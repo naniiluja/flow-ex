@@ -16,6 +16,13 @@ Mọi thông số dưới đây người dùng đã chọn bằng tai qua mẫu 
 - Lời hô một chữ trong ngoặc kép (“Đánh!”): `prosody/shout.py` rút khoảng trước về 0,7s và chèn 0,6s sau; điểm tách chọn bằng whisper như trên vì Vbee nối âm cuối chữ hô sang chữ kế.
 - Vbee trả 400 "hate speech" cho chữ tục ("đéo"): lời đọc dùng chữ thay ("quái"), bản trộn đè tiếng bíp 1 kHz, chữ
   trên hình ghi "đ**". Tên nước ngoài khó đọc: đưa mẫu A/B vài cách phiên âm ("Stand" chọn "Xờ ten", "Xtan" đọc thành "tan").
+- Phiên âm tiếng Anh cho Vbee (người dùng chọn mẫu A/B 2026-10-29, `~/Developer/lemo-films/voice-test/phien-am-ab-2026-10-29.mp3`):
+  đọc theo âm tiếng Anh thật, viết chữ THƯỜNG, mỗi âm tiết cách nhau một dấu cách, không gạch nối, không viết hoa
+  ("sờ tiu bo răn" cho Steel Ball Run; "Xờ tiu Bôn Răn" đọc thành tên riêng tách rời, gạch nối thêm khoảng nghỉ ~0,23 s).
+  Quy tắc Việt hoá (Ngo et al., chuyển tự Anh-Việt): cụm phụ âm đầu chèn "ờ" sau phụ âm thứ nhất ("st" → "sờ t"); phụ
+  âm cuối tiếng Việt không có thì bỏ hoặc tách thành âm tiết "-ơ" ("Manchester" → "man chét sờ tơ"); "l" cuối sau
+  nguyên âm dài thành "u" hoặc bỏ ("steel" → "tiu", "ball" → "bo"); âm nhấn mang thanh sắc hoặc ngang, âm lướt cuối là "ơ".
+  Tra IPA từ điển Anh trước khi viết, không đọc theo mặt chữ. Bảng tên đã duyệt: `~/Developer/lemo-films/style-refs/phien-am.md`.
 - whisper không phân xử được tên phiên âm tự đặt hay cặp gần âm ("Xen men"/"Xao men" đều ra "Samen", "đàn ong" ra
   "đàn ông"): ghi lại mốc giây và nhờ người dùng nghe, không kết luận bằng whisper hay formant.
 - Vbee có chỗ tự khựng giữa hai chữ (đã gặp: "khâu miệng | mẹ"), không do bước nhấn Praat. Phát hiện: whisper đoạn đó in dấu phẩy giữa hai chữ ("miệng, mẹ"). Sửa bằng đổi cách nói ("khâu miệng của mẹ"), thử vài cách qua Vbee và whisper, chỉ giữ cách không còn dấu phẩy, rồi cho người dùng nghe.

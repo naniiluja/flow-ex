@@ -4,6 +4,13 @@ Người dùng dùng AI (Flow) để vẽ vì không có chi phí thuê hoạ s�
 hành động kỳ quặc, nhân vật đổi dáng, rung giật. AI vẽ; người làm phim chịu trách nhiệm từng khung. Áp cho mọi video
 có nhân vật hay cảnh do Flow sinh (sprite hd-2d, sitcom 2D, collage...). Chi tiết kỹ thuật ở `lemo-hd2d-video.md`.
 
+## Vật không có sẵn hình: gen Flow, không vẽ bằng code (người dùng, 2026-10-29)
+
+- Mọi vật/đạo cụ/hình minh hoạ không có frame anime, trang manga hay ảnh có giấy phép thì gen bằng Flow đúng phong
+  cách phim, "isolated on a plain pure white background", rồi bóc nền (`subaru-moves/scripts/gen.mjs` + `matte.py`).
+  Code chỉ vẽ ngữ pháp của chính style (nét bút, chữ, mũi tên). Ví dụ bị chê: bát nhang + dải tang vẽ bằng code ở
+  coda `zombie-horse-short`. Không có Flow thì dừng và báo, không lùi về vẽ code.
+
 ## Không bao giờ để AI tự nghĩ chuyển động
 
 - Dáng lấy từ khung xương 3D (Quaternius UAL + keyframe trong `rig/custom.js`), AI chỉ vẽ lại nét theo tờ dáng.

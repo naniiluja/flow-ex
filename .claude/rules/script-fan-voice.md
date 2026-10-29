@@ -22,14 +22,17 @@ và danh sách khuôn câu AI.
 
 ## Lập luận bằng luật của truyện
 
-- Mọi thay đổi phải có lý do bằng luật trong truyện, nói rõ luật ra ("có một quy tắc mình muốn nhắc lại: chỉ dòng
-  máu Joestar mới mọc Stand", "chỉ người có Stand mới thấy Stand"), dẫn chứng bằng nhân vật thật (Lisa Lisa 50 tuổi
-  vẫn trẻ → sóng gợn làm chậm lão hoá).
+- Mọi thay đổi phải có lý do bằng luật trong truyện, nói rõ luật ra ("chỉ người có Stand mới thấy Stand"), dẫn
+  chứng bằng nhân vật thật (Lisa Lisa 50 tuổi vẫn trẻ → sóng gợn làm chậm lão hoá). KHÔNG báo trước bằng câu kiểu "có
+  một luật mình phải nói trước": người dùng chê "một luật là sao? tự nhiên 1 luật" (Short con DIO, 2026-10-29). Đưa
+  luật vào thẳng qua lời nhân vật hay chuyện xảy ra; không chép nguyên khuôn câu của bản mẫu.
 - Tự giới hạn để đáng tin: nói rõ chỗ KHÔNG bịa ("mình sẽ không vẽ chuyện… một mình cân hết, vì thế thì ảo quá").
 - Mỗi cao trào là một mẹo dùng năng lực SẴN CÓ theo cách mới (bong bóng thành radar, bong bóng dựng bản đồ quỹ đạo),
   đi theo chuỗi vấn đề → ràng buộc → mẹo → kết quả.
 - Neo bằng dữ kiện cụ thể: năm (1939 → 1989), tuổi (20 → 71), địa danh (St. Moritz, Cairo, Morioh), số liệu (5 → 9
   → 11 giây, radar 15 m). Mọi dữ kiện canon vẫn phải có nguồn trong FACTS.md.
+- Chi tiết wiki không dẫn khung (ngăn giấu, đáy giả) phải kiểm trên khung anime/manga trước khi làm payoff; kịch
+  bản ghi đúng nguồn đã thấy ("lời dẫn của anime nói thẳng"), phần còn lại là "fan đoán", kèm "nếu" ở câu chốt.
 
 ## Hình ảnh và cảm xúc
 

@@ -10,6 +10,8 @@
 - Tranh nhỏ (ảnh wiki 360-1000 px) là thẻ có viền trên nền chính nó làm mờ tối (không viền đen hai bên), không phóng
   quá 1,6x (manga) hay 2,5x (khung GIF). Tranh có chữ in sẵn (chữ Nhật trong GIF) thì bỏ, vẽ lại cảnh bằng code.
 - Khối chữ đặt sát mép thì căn theo mép (`align: 'right'` ở x 1020), không đặt tâm gần mép: "THỨ 23" từng tràn mất số.
+- Chữ IN HOA có dấu xếp nhiều dòng: line-height ≥ 1,25 cỡ chữ và chừa chỗ dấu trên dòng đầu; 1,0 làm dấu của "ĐẦU",
+  "SUỐT" đè chân chữ dòng trên. Khung 0 phải đọc được ở cỡ thumbnail: footage bạc thì nâng levels hoặc đổi khung.
 - Soát bằng still cả phim theo nhóm 8 khung trước khi render; mỗi lần sửa, render lại rồi cắt một khung từ mp4 cuối.
 
 ## Thời gian

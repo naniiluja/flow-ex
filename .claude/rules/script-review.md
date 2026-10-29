@@ -41,6 +41,9 @@ Chỉ áp khi KHÔNG dùng một file audio liền (`voice-tuning.md`): `tiktok`
 Mỗi lần có kịch bản, storyboard hay video (kể cả do agent làm và reviewer đã chấm), tự soát rồi SỬA trước khi đưa:
 1. Khoanh tròn: có nhiều quá không (tối đa một vòng mỗi nhịp, chỉ khi có vật cần chứng minh), có khoanh đúng vật
    mà lời đọc đang nói và đang thấy trong khung không (phóng to để xác nhận). Nhãn chữ trên hình soát cùng cách.
+   Không nhãn/mũi tên giải thích câu đùa ("tư vấn đa cấp", "bậc thang", "ảnh thờ bỏ túi": người dùng chê "xàm",
+   2026-10-29); hình tự nói được thì không chỉ. Chỉ giữ: tên nhân vật một lần, bằng chứng mà hình không tự nói được
+   (bìa sách tiếng Nhật), một vòng cho payoff.
 2. Chính tả: `check_script.py` rồi đọc tay theo bảng tự soát của vi-writing-guide, cả chữ trên hình.
 3. Kịch bản có xàm, có nhạt không: móc 3 giây đầu, payoff thật, câu đùa khoảng 15 giây một lần, không khuôn câu AI.
    Nhạt thì viết lại, không đưa.
