@@ -20,6 +20,8 @@ và `.claude/skills/write-video-script/references/schema.md`. Cách chấm bản
 - Viết cho tai, không cho mắt: tránh cụm nghe trùng tên riêng trong cùng video. Video lịch sử nói "nhà Trần, nhà
   Nguyên" thì "nhà mình" bị nghe thành "nhà Minh"; dùng "nước mình", "các cụ ta".
 - Thuật ngữ bản địa của thời đại, không mượn từ nước ngoài: truyện Việt dùng "vua", "hoàng hậu", "triều đình", không "nữ hoàng", "lâu đài". Nói rõ "sử chép" và "người ta đồn"; không bịa chi tiết rùng rợn.
+- Quan hệ họ hàng mà nguồn tiếng Anh không rõ thứ bậc ("sister", "brother") thì không đoán "em gái", "anh trai": dùng
+  "chị em gái" hoặc gọi tên (người xem đã hỏi lại "em gái gì..." ở Short Sandman).
 
 ## Chính tả và cấu trúc câu (người dùng yêu cầu, 2026-10-25)
 

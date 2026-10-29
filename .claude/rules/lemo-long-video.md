@@ -36,3 +36,6 @@ dở", `~/Developer/lemo-films/jojo-mysteries`, 2026-10-27). Kịch bản theo `
 - Clip ngắn hơn shot thì hình đứng im ở khung cuối: đặt `rate = min(1, (dài clip - in) / dài shot × 0,97)` cho mọi shot
   và mọi nửa `split`, lấy độ dài shot từ bảng `tools/plan.mjs` in ra (cách làm trong `gyro-short`, 2026-10-28).
 - `plan.mjs` ghi đè `data/plan.json` của film đang chạy: dựng ảnh bìa (`film/thumb.json`) chỉ SAU khi render xong.
+- Mỗi Short đổi phong cách dựng (đã duyệt: Sports Telestrator `gyro-thay-stand`, Game Show `sandman-short`) và dùng nhạc
+  CHƯA từng dùng ở phim nào (soát `~/Developer/lemo-films/*/music`), chọn theo bối cảnh truyện (SBR miền Tây 1890: western).
+  Đưa tờ storyboard 6-10 khung dựng thật cho người dùng duyệt TRƯỚC khi gọi Vbee.

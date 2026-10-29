@@ -15,6 +15,10 @@ và danh sách khuôn câu AI.
 - Dùng tự nhiên từ lóng game và fandom (OP, ulti, combo, solo, bay màu, cục tạ, buff, meme, "kick the dog"), mỗi từ
   phải nghe hiểu được trong ngữ cảnh. Thành ngữ quen ("vào sinh ra tử", "cá mè một lứa", "người dưng nước lã") được
   dùng: Hán Việt bị cấm chỉ là Hán Việt văn phòng hoa mỹ.
+- Tên Stand, kỹ năng, vật phẩm, địa danh của truyện giữ nguyên tên gốc, KHÔNG dịch sang tiếng Việt (người dùng,
+  2026-10-28): Spin, Golden Spin, Steel Ball, Devil's Palm, Saint's Corpse, Tusk, D4C, In a Silent Way. Áp cho phụ đề,
+  chữ trên hình và lời đọc; bản `story-voice.md` chỉ PHIÊN ÂM tên gốc để Vbee đọc ("Xờ pin"), không thay bằng nghĩa
+  ("Lòng Bàn Tay Quỷ", "Xác Thánh", "kỹ thuật xoay" là sai). Câu giải thích nghĩa đặt riêng, một lần, nếu cần.
 
 ## Lập luận bằng luật của truyện
 

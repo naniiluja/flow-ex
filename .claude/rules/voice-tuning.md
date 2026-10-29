@@ -16,6 +16,8 @@ Mọi thông số dưới đây người dùng đã chọn bằng tai qua mẫu 
 - Lời hô một chữ trong ngoặc kép (“Đánh!”): `prosody/shout.py` rút khoảng trước về 0,7s và chèn 0,6s sau; điểm tách chọn bằng whisper như trên vì Vbee nối âm cuối chữ hô sang chữ kế.
 - Vbee trả 400 "hate speech" cho chữ tục ("đéo"): lời đọc dùng chữ thay ("quái"), bản trộn đè tiếng bíp 1 kHz, chữ
   trên hình ghi "đ**". Tên nước ngoài khó đọc: đưa mẫu A/B vài cách phiên âm ("Stand" chọn "Xờ ten", "Xtan" đọc thành "tan").
+- whisper không phân xử được tên phiên âm tự đặt hay cặp gần âm ("Xen men"/"Xao men" đều ra "Samen", "đàn ong" ra
+  "đàn ông"): ghi lại mốc giây và nhờ người dùng nghe, không kết luận bằng whisper hay formant.
 - Vbee có chỗ tự khựng giữa hai chữ (đã gặp: "khâu miệng | mẹ"), không do bước nhấn Praat. Phát hiện: whisper đoạn đó in dấu phẩy giữa hai chữ ("miệng, mẹ"). Sửa bằng đổi cách nói ("khâu miệng của mẹ"), thử vài cách qua Vbee và whisper, chỉ giữ cách không còn dấu phẩy, rồi cho người dùng nghe.
 - Sửa lời một câu sau khi đã đo mốc: chỉ cho Vbee đọc lại ĐOẠN chứa câu đó, cắt sạch im lặng hai đầu, thay vào giữa hai
   khoảng nghỉ đoạn, whisper hai mối nối, rồi dời mọi mốc phía sau đúng độ dài chênh lệch.

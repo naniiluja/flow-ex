@@ -35,3 +35,12 @@ Kiểm bằng máy được thì chạy máy: đếm từ, câu, độ dài câu
 ## Giới hạn cảnh cho pipeline gen audio từng cảnh
 
 Chỉ áp khi KHÔNG dùng một file audio liền (`voice-tuning.md`): `tiktok` mỗi cảnh 3-6 giây (7-18 từ), `youtube` 8-16 giây (26-57 từ), vì mỗi cảnh là một ảnh tĩnh và cảnh dài thì trông đơ; đoạn ý dài hơn thì tách thành hai cảnh với hai `imagePrompt`. Truyện kể một mạch thì cảnh dài 20-70 từ là bình thường.
+
+## Soát bắt buộc trước khi đưa người dùng xem (người dùng yêu cầu, 2026-10-28)
+
+Mỗi lần có kịch bản, storyboard hay video (kể cả do agent làm và reviewer đã chấm), tự soát rồi SỬA trước khi đưa:
+1. Khoanh tròn: có nhiều quá không (tối đa một vòng mỗi nhịp, chỉ khi có vật cần chứng minh), có khoanh đúng vật
+   mà lời đọc đang nói và đang thấy trong khung không (phóng to để xác nhận). Nhãn chữ trên hình soát cùng cách.
+2. Chính tả: `check_script.py` rồi đọc tay theo bảng tự soát của vi-writing-guide, cả chữ trên hình.
+3. Kịch bản có xàm, có nhạt không: móc 3 giây đầu, payoff thật, câu đùa khoảng 15 giây một lần, không khuôn câu AI.
+   Nhạt thì viết lại, không đưa.
