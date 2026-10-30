@@ -13,6 +13,8 @@ vẫn theo `script-writing.md`, `script-fan-voice.md`. Mốc giây ghi cho video
   trả lời ở cuối ("tới cuối mới biết…").
 - Vượt kỳ vọng bằng công sức thấy được: nói cụ thể đã làm gì ("mình đọc lại ba chương, so cả bản Nhật"), dựng dày.
 - Vào nội dung chính chậm nhất giây 20 (Short: giây 8-10). Lời chào gói trong một câu ngắn, không chen giữa hook.
+- Số thật kênh Chô li (Analytics 25-27/10/2026): Short 2:22 và 2:49 rơi từ ~97% ở giây 6 xuống ~47% ở giây 16-19;
+  Short 1:06-1:07 còn 66-80% ở cùng mốc. Chỗ mất người nhiều nhất là giây 6-19: câu móc phải có khoảng trống tò mò.
 
 ## Thân video: giữ đường giữ chân phẳng
 - Đa dạng hình ảnh: đổi khung, góc, cỡ cảnh hoặc chuyển động ít nhất mỗi 3-5 giây (Short: 2-3 giây). Không ảnh tĩnh
@@ -25,9 +27,16 @@ vẫn theo `script-writing.md`, `script-fan-voice.md`. Mốc giây ghi cho video
 ## Kết: dừng ở cao trào
 - Lộ phần thưởng lớn nhất (đáp án của khoảng trống tò mò) ở cuối, rồi kết ngay ở đỉnh: kịch tính, ấm, hoặc cú đùa đen.
 - Câu cảm ơn/hẹn gặp lại ≤ 2 giây, đặt sau cú chốt, không kéo dài phần kết sau payoff.
+- Số thật (cùng đợt đo): 8-10 giây cuối (cảm ơn + câu hỏi bình luận) mất 20-30 điểm giữ chân (Pocoloco 49% → 21%,
+  Diego 38% → 10%). Câu hỏi bình luận để ở mô tả, không đọc trong video; kết ngay sau cú chốt.
 
 ## Soát trước khi đăng
 - Xem lại cả bản dựng như người xem lạ: đánh dấu mọi chỗ có thể lướt đi (câu thừa, ảnh đứng lâu, giải thích lặp), cắt
   hoặc dựng lại. Ghi các chỗ đã cắt trong báo cáo.
 - Kiểm bằng số: khung 0 có hình chính; câu đầu chứa từ khoá tiêu đề; không khoảng nào > 5 s (Short > 3 s) không đổi
   hình; vào nội dung chính trước mốc trên.
+- Short: lời đọc tối đa ~220 chữ (250 chữ ra 72-88 s); hook nêu câu hỏi, đáp án chỉ lộ ở payoff và được hỏi lại ngay
+  trước đó; "mình" chỉ dùng cho người kể, không bao giờ cho nhân vật.
+- Hình chiếm trọn bề ngang và cao ≥ 1.250 px; không ô footage nhỏ giữa nền trống; ảnh bìa lấy từ khung 1 không có phụ đề.
+- Trước khi đăng, cắt một khung mỗi shot từ mp4 cuối và xem: shot nào hình không khớp lời thì dựng lại.
+- Đăng qua API xong, vào Studio bỏ tick "Địa điểm nổi bật" và "Tự động hiển thị khái niệm" (API để bật sẵn).
