@@ -39,4 +39,11 @@ vẫn theo `script-writing.md`, `script-fan-voice.md`. Mốc giây ghi cho video
   trước đó; "mình" chỉ dùng cho người kể, không bao giờ cho nhân vật.
 - Hình chiếm trọn bề ngang và cao ≥ 1.250 px; không ô footage nhỏ giữa nền trống; ảnh bìa lấy từ khung 1 không có phụ đề.
 - Trước khi đăng, cắt một khung mỗi shot từ mp4 cuối và xem: shot nào hình không khớp lời thì dựng lại.
-- Đăng qua API xong, vào Studio bỏ tick "Địa điểm nổi bật" và "Tự động hiển thị khái niệm" (API để bật sẵn).
+- Đăng qua API với `containsSyntheticMedia: false` (mục "Sử dụng AI" = Không), rồi vào Studio bỏ tick "Địa điểm
+  nổi bật" và "Tự động hiển thị khái niệm" (API để bật sẵn).
+
+## Kênh và phân phối (báo cáo `reports/Chiến lược phát triển kênh Chô li nói.md`, 31/10/2026)
+- Short có footage anime dài tối đa 59 s (Short trên 1 phút bị claim là chặn toàn cầu); meme 21-34 s.
+- Chủ đề Short ưu tiên luật truyện và số phận nhân vật phần 3-5; SBR chỉ làm móc vào ngày ra tập mới.
+- Nhịp mỗi tuần: 3-4 Short và 1 video dài 15-25 phút; video dài thuộc chuỗi có tên, tiêu đề kết bằng "| Nhớ sai #N".
+- Mỗi video vào đúng một playlist chủ đề; Short gắn "Video có liên quan" tới video dài cùng chủ đề.
