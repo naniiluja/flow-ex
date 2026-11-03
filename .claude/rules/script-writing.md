@@ -6,9 +6,9 @@ và `.claude/skills/write-video-script/references/schema.md`. Cách chấm bản
 ## Thứ tự bắt buộc
 
 - Viết CẢ câu chuyện thành văn xuôi liền mạch TRƯỚC, không nhìn số cảnh; cắt cảnh sau, ở dấu chấm, chỉ để gắn ảnh hoặc clip. Viết thẳng "mỗi cảnh một câu" đã bị chê "mỗi cảnh là 1 script không liền mạch" bốn lần.
-- Giao viết kịch bản cho agent thì dán NGUYÊN VĂN mọi luật viết và bản mẫu Caesar vào prompt (in bằng
-  `~/Developer/lemo-films/style-refs/script-rules-bundle.sh`), không chỉ đưa đường dẫn file; reviewer phải viết lại quá
-  vài câu thì trả về viết lại cả bài, không vá (người dùng chê bản vá "lủng củng, không giống người viết", 2026-10-29).
+- Rem tự viết kịch bản, không giao agent viết; review luôn giao agent (Opus), không tự chấm (người dùng, 2026-11-03).
+  Prompt review dán NGUYÊN VĂN mọi luật viết và bản mẫu Caesar (in bằng `~/Developer/lemo-films/style-refs/script-rules-bundle.sh`),
+  không chỉ đưa đường dẫn; reviewer bắt quá vài câu thì Rem viết lại cả bài, không vá ("lủng củng", 2026-10-29).
 - Độ dài giây không quan trọng với người dùng: không cắt truyện hay ép cảnh 3-6s chỉ để về 60s.
 - Mỗi cảnh móc vào cảnh trước bằng từ nối ("và", "nên", "rồi", "nhưng chưa đủ", "còn", "ít lâu sau", "lại có", "vậy"). Đọc liền các cảnh thành một đoạn; nghe như danh sách câu độc lập thì viết lại.
 

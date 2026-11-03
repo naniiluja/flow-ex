@@ -47,3 +47,12 @@ Mỗi lần có kịch bản, storyboard hay video (kể cả do agent làm và 
 2. Chính tả: `check_script.py` rồi đọc tay theo bảng tự soát của vi-writing-guide, cả chữ trên hình.
 3. Kịch bản có xàm, có nhạt không: móc 3 giây đầu, payoff thật, câu đùa khoảng 15 giây một lần, không khuôn câu AI.
    Nhạt thì viết lại, không đưa.
+
+## Kiểm chứng độc lập trước khi gọi Vbee (người dùng hỏi "script đã được fact check đàng hoàng chưa", 2026-11-02)
+
+- `FACTS.md` do chính người viết lập không đủ: trước khi gen giọng, cho agent Opus (mỗi agent một nhóm mục) tách MỌI
+  khẳng định, tự mở JoJo Wiki/nguồn Nhật/TV Tropes và footage, cố bác bỏ, trả ĐÚNG/SAI/CHƯA CHẮC kèm trích dẫn.
+- Lần đầu chạy (Nhớ sai #2) bắt được 5 câu sai trong kịch bản đã duyệt, gồm một lỗi cốt lõi ("Memetaa" là tiếng cú
+  đấm, không phải tiếng ếch). Câu sai phát hiện sau khi đã gen giọng thì phải đọc lại, dựng lại: rẻ nhất là kiểm trước.
+- Agent có thể bỏ sót bản lưu nguồn trong thư mục phim (TV Tropes Common Knowledge): đưa đường dẫn bản lưu vào prompt,
+  và tự xem lại mọi kết luận SAI/CHƯA CHẮC trước khi sửa.

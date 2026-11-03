@@ -14,6 +14,10 @@ Mọi thông số dưới đây người dùng đã chọn bằng tai qua mẫu 
 - Sau narrate-expressive luôn chạy `collage-broll/scripts/prosody/pauses.py` (cần `WHISPER_DIR`): mỗi cuối câu ≥0,45s, chọn khoảng lặng DÀI nhất trong ±0,5s quanh mốc whisper; chỗ không có khoảng lặng thật chỉ cắt khi whisper nghe nửa trước tận cùng đúng chữ cuối câu và nửa sau mở đầu đúng chữ kế (so sau khi bỏ dấu, lệch ≤1 ký tự), không thì in `SKIP`.
 - Mỗi dòng `SKIP` phải xử lý tay: cắt thử các điểm quanh ranh giới, whisper hai nửa, áp điểm đúng bằng `prosody/insert_pause.py <t:dur>`. Sau mọi lần chèn, whisper nghe hai phía của từng khoảng chèn (không chèn giữa một từ).
 - Lời hô một chữ trong ngoặc kép (“Đánh!”): `prosody/shout.py` rút khoảng trước về 0,7s và chèn 0,6s sau; điểm tách chọn bằng whisper như trên vì Vbee nối âm cuối chữ hô sang chữ kế.
+- Đọc danh sách đáp án (A/B/C): nghỉ ~0,3 s sau chữ cái, ~0,6 s sau trọn một đáp án rồi mới sang đáp án kế (người dùng chê
+  "đọc hơi liền nhau", Short dừng thời gian 2026-11-03); soát khe nghỉ bằng silencedetect trước khi dựng.
+- Câu đếm ngắn ("còn ba giây"): gọi Vbee từng câu riêng qua narrate-expressive rồi chồng tiếng tích tắc 0,45 làm bản đếm bị
+  "méo". Lấy từ một lần gọi dài hơn (raw.wav), tích tắc thấp hơn giọng ≥15 dB và không đè lên chữ, soát true-peak.
 - Vbee trả 400 "hate speech" cho chữ tục ("đéo"): lời đọc dùng chữ thay ("quái"), bản trộn đè tiếng bíp 1 kHz, chữ
   trên hình ghi "đ**". Tên nước ngoài khó đọc: đưa mẫu A/B vài cách phiên âm ("Stand" chọn "Xờ ten", "Xtan" đọc thành "tan").
 - Phiên âm tiếng Anh cho Vbee (người dùng chọn mẫu A/B 2026-10-29, `~/Developer/lemo-films/voice-test/phien-am-ab-2026-10-29.mp3`):
