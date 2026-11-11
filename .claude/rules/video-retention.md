@@ -10,7 +10,8 @@ vẫn theo `script-writing.md`, `script-fan-voice.md`. Mốc giây ghi cho video
 
 ## 20 giây đầu (Short: 8-10 giây): hook đủ ba phần, rồi vào việc
 - Bối cảnh (chuyện gì, ở đâu), cái giá hoặc phần thưởng (ai sống/chết, bí mật gì bị lộ), và một khoảng trống tò mò chỉ
-  trả lời ở cuối ("tới cuối mới biết…").
+  trả lời ở cuối, nhưng KHÔNG nói câu hứa kiểu "cuối video mình sẽ nói…" (người dùng: "nghe hơi ba gai", 2026-11-07); mở
+  khoảng trống bằng chính dữ kiện và một câu dẫn tự nhiên ("muốn biết thứ đó là gì thì phải bắt đầu từ chính tu viện ấy").
 - Vượt kỳ vọng bằng công sức thấy được: nói cụ thể đã làm gì ("mình đọc lại ba chương, so cả bản Nhật"), dựng dày.
 - Vào nội dung chính chậm nhất giây 20 (Short: giây 8-10). Lời chào gói trong một câu ngắn, không chen giữa hook.
 - Số thật kênh Chô li (Analytics 25-27/10/2026): Short 2:22 và 2:49 rơi từ ~97% ở giây 6 xuống ~47% ở giây 16-19;
@@ -44,6 +45,7 @@ vẫn theo `script-writing.md`, `script-fan-voice.md`. Mốc giây ghi cho video
 
 ## Kênh và phân phối (báo cáo `reports/Chiến lược phát triển kênh Chô li nói.md`, 31/10/2026)
 - Short có footage anime dài tối đa 59 s (Short trên 1 phút bị claim là chặn toàn cầu); meme 21-34 s.
-- Chủ đề Short ưu tiên luật truyện và số phận nhân vật phần 3-5; SBR chỉ làm móc vào ngày ra tập mới.
+- Trong lúc anime SBR còn chiếu, phần lớn Short là SBR gắn với tập mới nhất hoặc trailer tập kế (Short SBR 10-40 nghìn
+  lượt xem, Short phần 1-6 chỉ 2-4 nghìn, đo 11/11/2026); phần 3-5 để cho video dài.
 - Nhịp mỗi tuần: 3-4 Short và 1 video dài 15-25 phút; video dài thuộc chuỗi có tên, tiêu đề kết bằng "| Nhớ sai #N".
 - Mỗi video vào đúng một playlist chủ đề; Short gắn "Video có liên quan" tới video dài cùng chủ đề.
